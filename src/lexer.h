@@ -11,7 +11,7 @@ enum class TokenType
 {
     T_SHORT_OPTION,
     T_LONG_OPTION,
-    T_EQUAL,
+    T_EQUALS,
 
     // Option value type
     T_STRING,
@@ -31,16 +31,21 @@ struct Token
 class ArgumentLexer
 {
     std::string cmdln;
-    std::string::iterator curpos;
+    std::string::const_iterator curpos;
 
 public:
     explicit ArgumentLexer(const std::string args)
         : cmdln(args), curpos(cmdln.begin())
     {};
+    ArgumentLexer(const ArgumentLexer& lc)
+        : cmdln(lc.cmdln),
+        curpos(cmdln.begin() + (lc.curpos - lc.cmdln.begin())) {};
+    ArgumentLexer(ArgumentLexer&&) = default;
     ArgumentLexer() = delete;
-
 
     char letterForwards(std::string& lexeme);
     void skipWhitespaces();
     Token tokenize();
+
+    ArgumentLexer& operator=(const ArgumentLexer& le);
 };
