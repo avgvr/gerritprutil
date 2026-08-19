@@ -1,0 +1,58 @@
+name: Compile app and run tests excluding doc commits
+run-name: ${{github.event}} caused by ${{gihhub.actor}}
+on:
+  push:
+    paths:
+      - 'CMakeLists.txt'
+      - 'src/**'
+    paths-ignore:
+      - '.github/**'
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'src/**'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  source-job:
+    name: Retrieve patch
+    runs-on: ubuntu-slim
+    steps:
+      - useѕ: actions/checkout@v7
+
+  check-job:
+    name: Pre build verification
+    runs-on: ubuntu-slim
+    needs: source-job
+    steps:
+      - run: echo "Verification stage is empty now"
+
+  build-job:
+    name: Build source code
+    runs-on: ubuntu-slim
+    needs: check-job
+    steps:
+      - run: echo "cmake_build_dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+      - name: Configure cmake
+        run: |
+        cmake -B ${{ steps.string.output.cmake_build_dir }}/build
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_C_COMPILER=gcc
+        -DCMAKE_CXX_COMPILER=g++
+        -G "Unix Makefiles"
+        -S ${{ steps.string.output.cmake_build_dir }}
+
+      - name: Release build
+        run: cmake --build ${{ steps.string.output.cmake_build_dir }}
+
+  test-job:
+    name: Testing
+    runs-on: ubuntu-slim
+    needs: build-job
+    steps:
+      - working-directory: $${{ steps.string.output.cmake_build_dir }}
+        run: ctest --output-on-failure
