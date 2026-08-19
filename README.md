@@ -6,7 +6,7 @@
 - [Build](#Build)
 - [License](#License)
 
---
+---
 
 ## Description
 
@@ -47,4 +47,4 @@ ctest --test-dir build
 ## License
 
 This project is licence under the BSD 2-Clause License - see the
-[LICENSE](LICENSE) file.
+[LICENSE](LICENSE) file for details.
