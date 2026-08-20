@@ -6,7 +6,7 @@
 - [Build](#Build)
 - [License](#License)
 
---
+---
 
 ## Description
 
@@ -38,7 +38,7 @@ Generate build files and compile the source code.
 cmake -B build && cmake --build build
 ```
 
-Run tests if amend
+Run tests if demanding
 
 ```bash
 ctest --test-dir build
@@ -47,4 +47,4 @@ ctest --test-dir build
 ## License
 
 This project is licence under the BSD 2-Clause License - see the
-[LICENSE](LICENSE) file.
+[LICENSE](LICENSE) file for details.
