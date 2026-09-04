@@ -27,7 +27,8 @@ jobs:
     runs-on: ubuntu-slim
     needs: source-job
     steps:
-      - run: echo "Verification stage is empty now"
+      - name: Install CMake
+        uses: ssrobins/install-cmake@v1
 
   build-job:
     name: Build source code
