@@ -17,6 +17,7 @@
 
 #define null 0
 
+
 namespace sock
 {
 
@@ -31,6 +32,35 @@ enum class domain
     localhost = AF_UNIX,
     inet = AF_INET,
     inet6 = AF_INET6
+};
+
+enum class SocketOption
+{
+    acceptConn =        SO_ACCEPTCONN,
+    broadcast =         SO_BROADCAST,
+    debug =             SO_DEBUG,
+    dontRoute =         SO_DONTROUTE,
+    error =             SO_ERROR,
+    keepAlive =         SO_KEEPALIVE,
+    linger =            SO_LINGER,
+    oobinline =         SO_OOBINLINE,
+    rcvbuf =            SO_RCVBUF,
+    rcvlowat =          SO_RCVLOWAT,
+    rcvtimeo =          SO_RCVTIMEO,
+    reuseaddr =         SO_REUSEADDR,
+    sndBuf =            SO_SNDBUF,
+    sndlowat =          SO_SNDLOWAT,
+    sndtimeo =          SO_SNDTIMEO,
+    type =              SO_TYPE
+};
+
+enum class Protocol
+{
+    api =               SOL_SOCKET,
+    tcp =               IPPROTO_TCP,
+    ip =                IPPROTO_IP,
+    ipv6 =              IPPROTO_IPV6,
+    udp =               IPPROTO_UDP
 };
 
 template <socktype T, domain D>
@@ -156,6 +186,47 @@ public:
         {
             throw std::system_error(errno, std::generic_category());
         };
+    };
+
+    template<typename SockOptType>
+    void setSocketOption(Protocol lvl, SocketOption opt, SockOptType &val)
+    {
+        int ret = setsockopt(
+                    this->fd,
+                    static_cast<int>(lvl),
+                    static_cast<int>(opt),
+                    std::addressof(val),
+                    sizeof(val)
+        );
+
+        if(ret == -1) throw std::system_error(errno, std::generic_category());
+    };
+
+    template<typename SockOptType>
+    SockOptType getSocketOption(Protocol lvl, SocketOption opt)
+    {
+        SockOptType optval;
+        socklen_t optlen;
+
+        int ret = getsockopt(
+            this->fd,
+            static_cast<int>(lvl),
+            static_cast<int>(opt),
+            &optval,
+            &optlen
+        );
+
+        if(ret == -1) throw std::system_error(errno, std::generic_category());
+        if(optlen != sizeof(optval))
+        {
+            std::string error = "Return type size error - "
+                + std::to_string(sizeof(optval))
+                +  ", expected size is "
+                + std::to_string(optlen);
+
+            throw std::runtime_error(error);
+        }
+        return optval;
     };
 
 protected:
