@@ -3,25 +3,28 @@
 
 #pragma once
 
-
-#include <string>
-#include <type_traits>
+// #include <string>
 #include <system_error>
-#include <cerrno>
-#include <stdexcept>
-#include <cstddef>
+// #include <type_traits>
+// #include <cerrno>
+// #include <stdexcept>
+// #include <cstddef>
 #include <vector>
+#include <functional>
+#include <thread>
 
 #include <unistd.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define null 0
+const int null = 0;
 
 
 namespace sock
 {
+
+using fd_t = int;
 
 enum class socktype
 {
@@ -73,8 +76,6 @@ protected:
     static const domain dom = D;
     static const sa_family_t family = static_cast<sa_family_t>(dom);
 
-    using fd_t = int;
-
     fd_t fd;
 
 public:
@@ -109,10 +110,11 @@ public:
         using Type = AddrType;
 
         Address() : addr({}) {};
+        Address(Type &a) : addr(a) {};
 
-        const sockaddr* getSockaddr() const
+        const sockaddr getSockaddr() const
         {
-            return reinterpret_cast<const sockaddr*>(&addr);
+            return *reinterpret_cast<const sockaddr*>(&addr);
         };
 
         void setPlacement(const std::string &filepath)
@@ -181,10 +183,11 @@ public:
 
     void bind(const Address &addr)
     {
+        sockaddr sockaddr = addr.getSockaddr();
         if(
             ::bind(
                 this->fd,
-                addr.getSockaddr(),
+                &sockaddr,
                 sizeof(AddrType)
             ) == -1
         )
@@ -239,7 +242,7 @@ protected:
     class ActiveEndpoint
     {
     public:
-        virtual void connect(const typename GenericSocket<T, D>::Address addr) = 0;
+        virtual void connect(const typename GenericSocket<T, D>::Address &addr) = 0;
         virtual void write(const std::vector<std::byte> &data) = 0;
     };
 
@@ -247,8 +250,16 @@ protected:
     {
     public:
         virtual void listen(int backlog) = 0;
-        virtual typename GenericSocket<T, D>::Address accept() = 0;
-        virtual std::vector<std::byte> read(const size_t n) = 0;
+
+        struct client
+        {
+            typename GenericSocket<T, D>::Address addr;
+            fd_t socket;
+        };
+
+        virtual client accept() = 0;
+
+        virtual std::vector<unsigned char> read(const size_t n) = 0;
     };
 
 public:
@@ -264,16 +275,17 @@ public:
 
     ActiveDedicatedSocket() : Socket() {};
 
-    ActiveDedicatedSocket(const typename Socket::fd_t s) : Socket(s) {};
+    ActiveDedicatedSocket(const fd_t s) : Socket(s) {};
 
     void connect(const typename GenericSocket<Type, Dom>::Address &addr) override final
     {
         size_t socklen;
+        sockaddr sockaddr = addr.getSockaddr();
         int res =
             ::connect(
                 this->fd,
-                addr.getSockaddr(),
-                sizeof(GenericSocket<Type, Dom>::Address::AddrType)
+                &sockaddr,
+                sizeof(typename GenericSocket<Type, Dom>::Address::Type)
             );
 
         if(res < 0) throw std::system_error(errno, std::generic_category());
@@ -295,15 +307,13 @@ public:
 };
 
 template <socktype Type, domain Dom>
-class PassiveDedicatedSocket final : public GenericSocket<Type, Dom>, GenericSocket<Type, Dom>::Passive
+class PassiveDedicatedSocket : public GenericSocket<Type, Dom>, GenericSocket<Type, Dom>::Passive
 {
-private:
-    std::vector<typename GenericSocket<Type, Dom>::fd_t> clients;
 public:
     using Socket = GenericSocket<Type, Dom>;
 
-    PassiveDedicatedSocket() : GenericSocket<Type, Dom>(){};
-    PassiveDedicatedSocket(const typename Socket::fd_t s) : Socket(s) {};
+    PassiveDedicatedSocket() : Socket(){};
+    PassiveDedicatedSocket(const fd_t s) : Socket(s) {};
 
     void listen(int backlog) override final
     {
@@ -312,25 +322,25 @@ public:
         if(res == -1) throw std::system_error(errno, std::generic_category());
     };
 
-    typename GenericSocket<Type, Dom>::Address accept() override final
+    typename Socket::Passive::client accept() override final
     {
         struct sockaddr addr;
         socklen_t len;
         int socket = ::accept(this->fd, &addr, &len);
 
         using Sockaddr = typename GenericSocket<Type, Dom>::AddrType; 
-        Sockaddr type = static_cast<Sockaddr>(addr);
+        Sockaddr type = *reinterpret_cast<Sockaddr*>(&addr);
 
-        if(socket == -1) throw std::system_error(std::system_error(errno, std::generic_category()));
-        else clients.push_back(socket);
+        if(socket == -1)
+            throw std::system_error(std::system_error(errno, std::generic_category()));
 
-        return Address(type);
+        return {typename Socket::Address(type), socket};
     };
 
-    std::vector<unsigned char> read(const size_t n)
+    std::vector<unsigned char> read(const size_t n) override final
     {
         std::vector<unsigned char> buffer(n + 1, null);
-        size_t remain = n;
+        size_t remain = n + 1;
 
         for(;remain > 0;)
         {
@@ -340,6 +350,70 @@ public:
             else if (fetch == null) return buffer;
             else if (fetch > 0) remain -= fetch;
         }
+
+        return buffer;
+    };
+};
+
+template<socktype Type, domain Dom>
+class SocketConnector final : public PassiveDedicatedSocket<Type, Dom>
+{
+private:
+    size_t backlog;
+public:
+    using PassiveDedicatedSocket =
+        PassiveDedicatedSocket<Type, Dom>;
+
+    SocketConnector() : backlog(std::thread::hardware_concurrency()) {};
+    SocketConnector(size_t bg) : backlog(bg) {};
+
+    void link() {};
+
+    std::function<std::vector<unsigned char>(const size_t)>
+    getReadFunction() {return this->read;};
+
+    bool validness() {return true;}
+
+    size_t getBacklog() {return this->backlog;};
+};
+
+template<domain Dom>
+class SocketConnector<socktype::stream, Dom> final
+    : public PassiveDedicatedSocket<socktype::stream, Dom>
+{
+private:
+    PassiveDedicatedSocket<socktype::stream, Dom> client;
+    size_t backlog;
+public:
+    using PassiveDedicatedSocket =
+        PassiveDedicatedSocket<socktype::stream, Dom>;
+
+    SocketConnector() :backlog(std::thread::hardware_concurrency()) {};
+    SocketConnector(size_t bg) : backlog(bg) {};
+
+    void link()
+    {
+        this->client =
+            PassiveDedicatedSocket(this->accept().socket);
+    };
+
+    std::function<std::vector<unsigned char>(const size_t)>
+    getReadFunction()
+    {
+        return
+            std::bind(
+                &PassiveDedicatedSocket::read,
+                &this->client,
+                std::placeholders::_1
+            );
+    };
+
+    size_t getBacklog() {return this->backlog;};
+
+    void bind(const typename PassiveDedicatedSocket::Address &addr)
+    {
+        PassiveDedicatedSocket::bind(addr);
+        this->listen(backlog);
     };
 };
 
