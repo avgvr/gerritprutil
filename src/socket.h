@@ -3,13 +3,7 @@
 
 #pragma once
 
-// #include <string>
 #include <system_error>
-// #include <type_traits>
-// #include <cerrno>
-// #include <stdexcept>
-// #include <cstddef>
-#include <vector>
 #include <functional>
 #include <thread>
 
@@ -130,6 +124,7 @@ public:
             static_assert(std::is_same_v<AddrType, struct sockaddr_in>);
 
             addr.sin_family = family;
+            addr.sin_port = port;
             int r = inet_pton(family, inaddr.c_str(), &addr.sin_addr);
 
             if (r == 0)
@@ -157,6 +152,8 @@ public:
             static_assert(std::is_same_v<AddrType, struct sockaddr_in>);
 
             addr.sin6_family = family;
+            addr.sin6_port = port;
+            addr.sin6_flowinfo = flowinfo;
             int r = inet_pton(family, in6addr.c_str(), &addr.sin_addr);
 
             if (r == 0)
@@ -293,7 +290,7 @@ public:
 
     void write(const std::vector<std::byte> &data) override final
     {
-        ssize_t res = ::write(this->fd, data.data(), data.size());
+        ssize_t res = ::send(this->fd, data.data(), data.size(), null);
 
         if(res < 0) throw std::system_error(errno, std::generic_category());
         else if(res != data.size())
@@ -344,9 +341,20 @@ public:
 
         for(;remain > 0;)
         {
-            int fetch = ::read(this->fd, buffer.data() + (n - remain), remain);
+            int fetch =
+                ::recv(
+                        this->fd,
+                        buffer.data() + (n + 1 - remain),
+                        remain,
+                        null
+                    );
 
-            if (fetch < 0) throw std::system_error(errno, std::generic_category());
+            if (fetch < 0)
+            {
+                if(!(errno == EAGAIN and errno == EWOULDBLOCK))
+                    throw std::system_error(errno, std::generic_category());
+                else return buffer;
+            }
             else if (fetch == null) return buffer;
             else if (fetch > 0) remain -= fetch;
         }
@@ -367,12 +375,22 @@ public:
     SocketConnector() : backlog(std::thread::hardware_concurrency()) {};
     SocketConnector(size_t bg) : backlog(bg) {};
 
+    bool isClientValid()
+    {
+        try{
+            int socktype = this->template getSocketOption<int>(Protocol::api, SocketOption::type);
+        }
+        catch(std::system_error &err)
+        {
+            return false;
+        }
+
+        return true;
+    };
+
     void link() {};
 
-    std::function<std::vector<unsigned char>(const size_t)>
-    getReadFunction() {return this->read;};
-
-    bool validness() {return true;}
+    GenericSocket<socktype::stream, Dom>& getConnection() {return *this;}
 
     size_t getBacklog() {return this->backlog;};
 };
@@ -382,7 +400,7 @@ class SocketConnector<socktype::stream, Dom> final
     : public PassiveDedicatedSocket<socktype::stream, Dom>
 {
 private:
-    PassiveDedicatedSocket<socktype::stream, Dom> client;
+    std::unique_ptr<PassiveDedicatedSocket<socktype::stream, Dom>> client;
     size_t backlog;
 public:
     using PassiveDedicatedSocket =
@@ -391,22 +409,33 @@ public:
     SocketConnector() :backlog(std::thread::hardware_concurrency()) {};
     SocketConnector(size_t bg) : backlog(bg) {};
 
-    void link()
+    bool isClientValid()
     {
-        this->client =
-            PassiveDedicatedSocket(this->accept().socket);
+        int socktype;
+        try{
+            if(client)
+                client->template getSocketOption<int>(
+                    Protocol::api,
+                    SocketOption::type
+                );
+            else return false;
+        }
+        catch(std::system_error &err)
+        {
+            return false;
+        }
+
+        return true;
     };
 
-    std::function<std::vector<unsigned char>(const size_t)>
-    getReadFunction()
+    void link()
     {
-        return
-            std::bind(
-                &PassiveDedicatedSocket::read,
-                &this->client,
-                std::placeholders::_1
-            );
+        auto deleter = this->client.get_deleter();
+        deleter(this->client.release());
+        this->client = std::make_unique<PassiveDedicatedSocket>(this->accept().socket);
     };
+
+    GenericSocket<socktype::stream, Dom>& getConnection() {return *client;}
 
     size_t getBacklog() {return this->backlog;};
 
