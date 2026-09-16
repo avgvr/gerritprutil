@@ -14,7 +14,6 @@
 
 const int null = 0;
 
-
 namespace sock
 {
 
@@ -321,15 +320,25 @@ public:
 
     typename Socket::Passive::client accept() override final
     {
+        using Sockaddr = typename GenericSocket<Type, Dom>::AddrType; 
+
         struct sockaddr addr;
         socklen_t len;
-        int socket = ::accept(this->fd, &addr, &len);
+        Sockaddr type;
+        int socket = -1;
 
-        using Sockaddr = typename GenericSocket<Type, Dom>::AddrType; 
-        Sockaddr type = *reinterpret_cast<Sockaddr*>(&addr);
+        for(;socket == -1;)
+        {
+            socket = ::accept(this->fd, &addr, &len);
+            type = *reinterpret_cast<Sockaddr*>(&addr);
 
-        if(socket == -1)
-            throw std::system_error(std::system_error(errno, std::generic_category()));
+            if(socket == -1)
+                if(!(errno == EAGAIN and errno == EWOULDBLOCK))
+                    throw std::system_error(std::system_error(
+                                errno,
+                                std::generic_category())
+                            );
+        }
 
         return {typename Socket::Address(type), socket};
     };
