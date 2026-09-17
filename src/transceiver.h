@@ -39,6 +39,11 @@ public:
         return buff;
     };
 
+    void closeConnection()
+    {
+        scon.getConnection().~GenericSocket<Type, Dom>();
+    }
+
     void sendPacket(std::vector<unsigned char> &content)
     {
         sock::GenericSocket<Type, Dom> &sock = scon.getConnection();
