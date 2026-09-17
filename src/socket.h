@@ -320,7 +320,7 @@ public:
 
     typename Socket::Passive::client accept() override final
     {
-        using Sockaddr = typename GenericSocket<Type, Dom>::AddrType; 
+        using Sockaddr = typename GenericSocket<Type, Dom>::AddrType;
 
         struct sockaddr addr;
         socklen_t len;
@@ -415,7 +415,7 @@ public:
     using PassiveDedicatedSocket =
         PassiveDedicatedSocket<socktype::stream, Dom>;
 
-    SocketConnector() :backlog(std::thread::hardware_concurrency()) {};
+    SocketConnector() : backlog(std::thread::hardware_concurrency()) {};
     SocketConnector(size_t bg) : backlog(bg) {};
 
     bool isClientValid()
