@@ -21,11 +21,17 @@ FetchContent_Declare(googletest
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+FetchContent_Declare(json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+)
+FetchContent_MakeAvailable(json)
+
 add_executable(gerritprutil)
 
 add_library(libc INTERFACE)
 target_link_libraries(gerritprutil
     PRIVATE libc
+    PRIVATE nlohmann_json::nlohmann_json
 )
 
 target_compile_definitions(gerritprutil
