@@ -239,7 +239,7 @@ protected:
     {
     public:
         virtual void connect(const typename GenericSocket<T, D>::Address &addr) = 0;
-        virtual void write(const std::vector<std::byte> &data) = 0;
+        virtual void write(const std::vector<unsigned char> &data) = 0;
     };
 
     class PassiveEndpoint
@@ -287,7 +287,7 @@ public:
         if(res < 0) throw std::system_error(errno, std::generic_category());
     };
 
-    void write(const std::vector<std::byte> &data) override final
+    void write(const std::vector<unsigned char> &data) override final
     {
         ssize_t res = ::send(this->fd, data.data(), data.size(), null);
 

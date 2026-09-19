@@ -40,8 +40,9 @@ private:
     size_t prid;
     std::string repositoryUrl;
     int commits;
-    std::string headHash, baseHash;
+    std::string headHash, baseHash, repoName;
 public:
+    bool isBodyValid() {return this->isFilled;}
     void acceptRequest(const std::vector<unsigned char> &data)
     {
         this->isFilled = false;
@@ -60,9 +61,7 @@ public:
         }
 
         std::string contentType = header.getValue("content-type");
-        if(!(contentType == "application/json"
-            and contentType == "application/x-www-form-urlencoded")
-        ) return;
+        if(contentType != "application/json") return;
 
         nlohmann::json jsonbody = nlohmann::json::parse(body);
         nlohmann::json jsonpayload = nlohmann::json::parse(std::string(jsonbody["payload"]));
@@ -77,9 +76,26 @@ public:
             this->commits = jsonpayload["commits"];
             this->baseHash = jsonpayload["base"]["sha"];
             this->headHash = jsonpayload["head"]["sha"];
+            this->repoName = jsonpayload["repository"]["name"];
             this->isFilled = true;
         }
     };
 
-    std::vector<unsigned char> getResponse();
+    std::vector<unsigned char> getResponse()
+    {
+        nlohmann::json body;
+        body["status"] = "ok";
+
+        std::string response;
+
+        response += header.getValue("version") + " 200 OK\r\n";
+        response += "Content-Type: application/json\r\n";
+        response += "Content-Length: "
+                        + std::to_string(body.dump().size())
+                        + "\r\n";
+        response += "Connection: close\r\n\r\n";
+        response += body.dump(-1, 0);
+
+        return {response.begin(), response.end()};
+    };
 };
