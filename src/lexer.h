@@ -6,7 +6,6 @@
 #include <iostream>
 #include <string>
 
-
 enum class TokenType
 {
     T_SHORT_OPTION,
@@ -16,13 +15,14 @@ enum class TokenType
     // Option value type
     T_STRING,
     T_NUMBER,
+    T_VOID,
 
     T_UNKNOWN,
 
     T_END_OF_LINE
 };
 
-struct Token
+struct token
 {
     TokenType type;
     std::string lexeme;
@@ -34,7 +34,7 @@ class ArgumentLexer
     std::string::const_iterator curpos;
 
 public:
-    explicit ArgumentLexer(const std::string args)
+    explicit ArgumentLexer(const std::string &args)
         : cmdln(args), curpos(cmdln.begin())
     {};
     ArgumentLexer(const ArgumentLexer& lc)
@@ -45,7 +45,7 @@ public:
 
     char letterForwards(std::string& lexeme);
     void skipWhitespaces();
-    Token tokenize();
+    token tokenize();
 
     ArgumentLexer& operator=(const ArgumentLexer& le);
 };
