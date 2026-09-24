@@ -16,42 +16,70 @@ defaults:
     shell: bash
 
 jobs:
-  source-job:
-    name: Retrieve patch
-    runs-on: ubuntu-slim
-    steps:
-      - uses: actions/checkout@v7
-
   check-job:
     name: Pre build verification
-    runs-on: ubuntu-slim
-    needs: source-job
+    runs-on: ubuntu-latest
     steps:
-      - run: echo "Verification stage is empty now"
+      - name: Check CMake
+        run: cmake --version
+      - name: Check GCC c++ compiler
+        run: g++ --version
 
   build-job:
     name: Build source code
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     needs: check-job
+    outputs:
+      build_dir: ${{ steps.variables.outputs.cmake_build_dir }}
+      build_archive: ${{ steps.variables.outputs.build_archive }}
     steps:
-      - run: echo "cmake_build_dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+      - name: Acquire source code
+        uses: actions/checkout@v7
+
+      - id: variables
+        run: |
+          echo "build_dir=build" >> "$GITHUB_OUTPUT"
+          echo "cmake_build_dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+          echo "build_archive=build.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: Configure cmake
         run: |
-         cmake -B ${{ steps.string.output.cmake_build_dir }}
-         -DCMAKE_BUILD_TYPE=Release
-         -DCMAKE_C_COMPILER=gcc
-         -DCMAKE_CXX_COMPILER=g++
-         -G "Unix Makefiles"
-         -S ${{ steps.string.output.cmake_build_dir }}
+         cmake -B ${{ steps.variables.outputs.cmake_build_dir }} \
+         -DCMAKE_BUILD_TYPE=Release \
+         -DCMAKE_C_COMPILER=gcc \
+         -DCMAKE_CXX_COMPILER=g++ \
+         -G "Unix Makefiles" \
+         -S ${{ github.workspace }} \
 
       - name: Release build
-        run: cmake --build ${{ steps.string.output.cmake_build_dir }}
+        run: cmake --build ${{ steps.variables.outputs.cmake_build_dir }}
+
+
+      - name: Archive build files into a tarball
+        run: tar -czf ${{ steps.variables.outputs.build_archive }} --exclude=**_deps ${{ steps.variables.outputs.build_dir }}
+
+      - run: ls -R
+
+      - name: Upload build files
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.variables.outputs.build_archive }}
+          archive: false
 
   test-job:
     name: Testing
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     needs: build-job
     steps:
-      - working-directory: $${{ steps.string.output.cmake_build_dir }}
+      - name: Aqcuire build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-job.build_archive }}
+
+      - name: Extract build files
+        run: tar -xzf ${{ needs.build-job.outputs.build_archive }}
+
+      - run: ls -lR
+      - name: Execute tests
+        working-directory: ${{ needs.build-job.outputs.build_dir }}
         run: ctest --output-on-failure

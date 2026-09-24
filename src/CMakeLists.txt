@@ -9,4 +9,6 @@ target_sources(gerritprutil
         FILE_SET HEADERS
         FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/lexer.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/socket.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/transceiver.h
 )

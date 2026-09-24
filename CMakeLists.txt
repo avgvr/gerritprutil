@@ -23,6 +23,11 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(gerritprutil)
 
+add_library(libc INTERFACE)
+target_link_libraries(gerritprutil
+    PRIVATE libc
+)
+
 target_compile_definitions(gerritprutil
     PUBLIC
         VERSION=\"${gerritutils_VERSION}\"
