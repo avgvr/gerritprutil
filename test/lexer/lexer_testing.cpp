@@ -12,7 +12,7 @@
 TEST(LexerTestingExpectedWork, EmptyCommandLineArguments)
 {
     ArgumentLexer l("");
-    Token t = l.tokenize();
+    token t = l.tokenize();
 
     EXPECT_EQ(t.type, TokenType::T_END_OF_LINE);
     EXPECT_EQ(t.lexeme, std::string(""));
@@ -21,7 +21,7 @@ TEST(LexerTestingExpectedWork, EmptyCommandLineArguments)
 TEST(LexerTestingExpectedWork, ShortCommands)
 {
     ArgumentLexer l("-s");
-    Token t = l.tokenize();
+    token t = l.tokenize();
 
     EXPECT_EQ(t.type, TokenType::T_SHORT_OPTION);
     EXPECT_EQ(t.lexeme, std::string("-s"));
@@ -48,7 +48,7 @@ TEST(LexerTestingExpectedWork, ShortCommands)
 TEST(LexerTestingExpectedWork, LongCommands)
 {
     ArgumentLexer l = ArgumentLexer("--long");
-    Token t = l.tokenize();
+    token t = l.tokenize();
 
     EXPECT_EQ(t.type, TokenType::T_LONG_OPTION);
     EXPECT_EQ(t.lexeme, std::string("--long"));
@@ -75,7 +75,7 @@ TEST(LexerTestingExpectedWork, LongCommands)
 TEST(LexerTestingExpectedWork, EqualsToken)
 {
     ArgumentLexer l = ArgumentLexer("=");
-    Token t = l.tokenize();
+    token t = l.tokenize();
 
     EXPECT_EQ(t.type, TokenType::T_EQUALS);
     EXPECT_EQ(t.lexeme, std::string("="));
@@ -84,7 +84,7 @@ TEST(LexerTestingExpectedWork, EqualsToken)
 TEST(LexerTestingExpectedWork, StringValues)
 {
     ArgumentLexer l = ArgumentLexer("\"string\"");
-    Token t = l.tokenize();
+    token t = l.tokenize();
 
     EXPECT_EQ(t.type, TokenType::T_STRING);
     EXPECT_EQ(t.lexeme, std::string("\"string\""));
@@ -129,7 +129,7 @@ TEST(LexerTestingExpectedWork, StringValues)
 TEST(LexerTestingExpectedWork, NumberValues)
 {
     ArgumentLexer l = ArgumentLexer("1232123");
-    Token t = l.tokenize();
+    token t = l.tokenize();
 
     EXPECT_EQ(t.type, TokenType::T_NUMBER);
     EXPECT_EQ(t.lexeme, std::string("1232123"));
@@ -145,7 +145,7 @@ TEST(LexerTestingExpectedWork, WholeArguments)
 {
     ArgumentLexer l = ArgumentLexer("-h helpstring --count 5");
 
-    std::deque<Token> tkns =
+    std::deque<token> tkns =
     {
         {TokenType::T_SHORT_OPTION, "-h"},
         {TokenType::T_STRING, "helpstring"},
@@ -153,7 +153,7 @@ TEST(LexerTestingExpectedWork, WholeArguments)
         {TokenType::T_NUMBER, "5"}
     };
 
-    Token t, tf;
+    token t, tf;
 
     t = l.tokenize();
     while(!tkns.empty())

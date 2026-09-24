@@ -23,7 +23,7 @@ char ArgumentLexer::letterForwards(std::string& lexeme)
     return cur >= this->cmdln.end() ? '\0' : *cur;
 };
 
-Token ArgumentLexer::tokenize()
+token ArgumentLexer::tokenize()
 {
     std::string lexeme;
     while(this->curpos < this->cmdln.end())
@@ -31,31 +31,31 @@ Token ArgumentLexer::tokenize()
         this->skipWhitespaces();
 
         char ch = *this->curpos;
-        TokenType token;
+        TokenType tkn;
         switch(ch)
         {
             case '-':
-                token = TokenType::T_SHORT_OPTION;
+                tkn = TokenType::T_SHORT_OPTION;
                 ch = this->letterForwards(lexeme);
                 if(ch == '-')
                 {
-                    token = TokenType::T_LONG_OPTION;
+                    tkn = TokenType::T_LONG_OPTION;
                     ch = this->letterForwards(lexeme);
                 }
-                if(token == TokenType::T_LONG_OPTION)
+                if(tkn == TokenType::T_LONG_OPTION)
                 {
                     while(std::islower(ch)) ch = this->letterForwards(lexeme);
                 }
                 else
                 {
-                    if(!std::islower(ch)) token = TokenType::T_UNKNOWN;
+                    if(!std::islower(ch)) tkn = TokenType::T_UNKNOWN;
                     ch = this->letterForwards(lexeme);
                 }
                 if(!(ch == ' ' or ch == '=' or ch == '\0'))
                 {
-                    token = TokenType::T_UNKNOWN;
+                    tkn = TokenType::T_UNKNOWN;
                 }
-                return {token, lexeme};
+                return {tkn, lexeme};
             case '=':
                 this->letterForwards(lexeme);
                 return {TokenType::T_EQUALS, lexeme};
@@ -66,11 +66,11 @@ Token ArgumentLexer::tokenize()
                     {
                         ch = this->letterForwards(lexeme);
                     }while(std::isdigit(ch));
-                    token = TokenType::T_NUMBER;
+                    tkn = TokenType::T_NUMBER;
                     if(!(ch == ' ' or ch == '\0'))
                     {
                         ch = this->letterForwards(lexeme);
-                        token = TokenType::T_UNKNOWN;
+                        tkn = TokenType::T_UNKNOWN;
                     }
                 }
                 else
@@ -82,11 +82,11 @@ Token ArgumentLexer::tokenize()
                         ch = this->letterForwards(lexeme);
                     }while(!(ch == '\"' or ch == '\'' or ch == '\0')
                             and (bracket or ch != ' '));
-                    token = TokenType::T_STRING;
-                    if(bracket and ch != bracket) token = TokenType::T_UNKNOWN;
+                    tkn = TokenType::T_STRING;
+                    if(bracket and ch != bracket) tkn = TokenType::T_UNKNOWN;
                     else if(bracket) ch = this->letterForwards(lexeme);
                 }
-                return {token, lexeme};
+                return {tkn, lexeme};
         }
     }
     return {TokenType::T_END_OF_LINE, ""};
