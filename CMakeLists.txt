@@ -41,9 +41,11 @@ add_executable(gerritprutil)
 
 add_library(libc INTERFACE)
 target_link_libraries(gerritprutil
-    PRIVATE libc
-    PRIVATE nlohmann_json::nlohmann_json
-    PRIVATE libgit2package
+    PRIVATE
+        libc
+        nlohmann_json::nlohmann_json
+        libgit2package
+        ssh
 )
 
 target_compile_definitions(gerritprutil

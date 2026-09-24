@@ -114,14 +114,10 @@ public:
         handleResult(git_revwalk_sorting(walker, GIT_SORT_TOPOLOGICAL));
         handleResult(git_revwalk_push_range(walker, range.c_str()));
 
-        git_commit *commit;
         git_oid oid;
-        handleResult(git_oid_fromstr(&oid, headsha.c_str()));
-        handleResult(git_commit_lookup(&commit, repo, &oid));
-        commits.push_back(std::move(std::make_unique<Commit>(commit)));
-
         while(git_revwalk_next(&oid, walker) == 0)
         {
+            git_commit *commit;
             handleResult(git_commit_lookup(&commit, repo, &oid));
             auto commitptr = std::make_unique<Commit>(commit);
             commits.push_back(std::move(commitptr));

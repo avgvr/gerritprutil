@@ -40,8 +40,16 @@ private:
     size_t prid;
     std::string repositoryUrl;
     int commits;
-    std::string headHash, baseHash, repoName;
+    std::string headHash, baseHash, repositoryName;
 public:
+    std::string head() {return headHash;}
+    std::string base() {return baseHash;}
+    std::pair<std::string, std::string> repository()
+        {return {repositoryUrl, repositoryName};}
+    size_t commitsInPr() {return commits;}
+    size_t pullRequestId() {return prid;};
+    nlohmann::json pullRequestSender() {return sender;}
+
     bool isBodyValid() {return this->isFilled;}
     void acceptRequest(const std::vector<unsigned char> &data)
     {
@@ -63,20 +71,19 @@ public:
         std::string contentType = header.getValue("content-type");
         if(contentType != "application/json") return;
 
-        nlohmann::json jsonbody = nlohmann::json::parse(body);
-        nlohmann::json jsonpayload = nlohmann::json::parse(std::string(jsonbody["payload"]));
+        nlohmann::json jsonpayload = nlohmann::json::parse(body);
 
         if(header.getValue("x-github-event") == "pull_request"
-            and jsonpayload["action"] == "assigned"
+            and jsonpayload["action"] == "opened"
         )
         {
             this->sender = jsonpayload["sender"];
             this->prid = jsonpayload["pull_request"]["id"];
-            this->repositoryUrl = jsonpayload["html_url"];
-            this->commits = jsonpayload["commits"];
-            this->baseHash = jsonpayload["base"]["sha"];
-            this->headHash = jsonpayload["head"]["sha"];
-            this->repoName = jsonpayload["repository"]["name"];
+            this->repositoryUrl = jsonpayload["repository"]["html_url"];
+            this->repositoryName = jsonpayload["repository"]["name"];
+            this->commits = jsonpayload["pull_request"]["commits"];
+            this->headHash = jsonpayload["pull_request"]["head"]["sha"];
+            this->baseHash = jsonpayload["pull_request"]["base"]["sha"];
             this->isFilled = true;
         }
     };
