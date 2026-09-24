@@ -13,5 +13,5 @@ target_sources(gerritprutil
             ${CMAKE_CURRENT_SOURCE_DIR}/transceiver.h
             ${CMAKE_CURRENT_SOURCE_DIR}/handlers.h
             ${CMAKE_CURRENT_SOURCE_DIR}/workers.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/html.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/http.h
 )
