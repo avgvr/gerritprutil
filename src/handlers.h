@@ -10,7 +10,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "html.h"
+#include "http.h"
 
 class EchoHandler
 {
@@ -35,7 +35,7 @@ private:
 
     bool isFilled;
 
-    html::Header header;
+    http::Header header;
     nlohmann::json sender;
     size_t prid;
     std::string repositoryUrl;
@@ -56,7 +56,7 @@ public:
 
         if(delimpos != std::string::npos)
         {
-            this->header = html::Header(packet.substr(0, delimpos));
+            this->header = http::Header(packet.substr(0, delimpos));
             body = packet.substr(sizeof(PacketDelim) / sizeof(char) - 1 + delimpos);
         }
 

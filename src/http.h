@@ -9,7 +9,7 @@
 #include <sstream>
 #include <algorithm>
 
-namespace html
+namespace http
 {
 
 class Header
