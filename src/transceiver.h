@@ -7,7 +7,6 @@
 
 #include <thread>
 
-
 template<sock::socktype Type, sock::domain Dom, class S>
 class Transceiver
 {
@@ -17,16 +16,16 @@ public:
     constexpr static size_t MaxPackageSize = 1024 * 1024;
 
     Transceiver() = delete;
-    Transceiver(S &s, const int bg)
+    Transceiver(sock::SocketConnector<Type, Dom, S> &s, const int bg)
         : scon(s, bg) {};
-    Transceiver(S &sc) : scon(sc) {};
+    explicit Transceiver(sock::SocketConnector<Type, Dom, S> &sc) : scon(sc) {};
 
     std::vector<unsigned char> receivePacket()
     {
         if(!scon.isClientValid()) scon.link();
 
         sock::GenericSocket<Type, Dom> &sock = scon.getConnection();
-        typename S::ActiveSocket &rsock =
+        S &rsock =
             static_cast<S&>(sock);
         std::vector<unsigned char> buff = rsock.read(MaxPackageSize);
 

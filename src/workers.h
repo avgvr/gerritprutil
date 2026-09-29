@@ -6,15 +6,15 @@
 #include "transceiver.h"
 
 
-template<sock::socktype Type, sock::domain Dom>
-void worker(EchoHandler &h, Transceiver<Type, Dom> &r)
+template<sock::socktype Type, sock::domain Dom, class S>
+void worker(EchoHandler &h, Transceiver<Type, Dom, S> &r)
 {
     h.acceptRequest(r.receivePacket());
     r.closeConnection();
 };
 
-template<sock::socktype Type, sock::domain Dom>
-void worker(HttpHandler &h, Transceiver<Type, Dom> &r)
+template<sock::socktype Type, sock::domain Dom, class S>
+void worker(HttpHandler &h, Transceiver<Type, Dom, S> &r)
 {
     h.acceptRequest(r.receivePacket());
     std::vector<unsigned char> response = h.getResponse();

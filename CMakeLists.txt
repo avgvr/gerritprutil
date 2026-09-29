@@ -12,6 +12,8 @@ enable_testing()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+link_libraries($<$<CXX_COMPILER_ID:GCC>:pthread>)
+
 include(FetchContent)
 
 FetchContent_Declare(libgit2
