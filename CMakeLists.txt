@@ -26,12 +26,17 @@ FetchContent_Declare(json
 )
 FetchContent_MakeAvailable(json)
 
+find_package(OpenSSL REQUIRED)
+
 add_executable(gerritprutil)
 
 add_library(libc INTERFACE)
 target_link_libraries(gerritprutil
-    PRIVATE libc
-    PRIVATE nlohmann_json::nlohmann_json
+    PRIVATE
+    libc
+    nlohmann_json::nlohmann_json
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
 target_compile_definitions(gerritprutil
