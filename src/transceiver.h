@@ -8,26 +8,26 @@
 #include <thread>
 
 
-template<sock::socktype Type, sock::domain Dom>
+template<sock::socktype Type, sock::domain Dom, class S>
 class Transceiver
 {
 private:
-    sock::SocketConnector<Type, Dom> &scon;
+    sock::SocketConnector<Type, Dom, S> &scon;
 public:
     constexpr static size_t MaxPackageSize = 1024 * 1024;
 
     Transceiver() = delete;
-    Transceiver(sock::PassiveDedicatedSocket<Type, Dom> &s, const int bg)
+    Transceiver(S &s, const int bg)
         : scon(s, bg) {};
-    Transceiver(sock::SocketConnector<Type, Dom> &sc) : scon(sc) {};
+    Transceiver(S &sc) : scon(sc) {};
 
     std::vector<unsigned char> receivePacket()
     {
         if(!scon.isClientValid()) scon.link();
 
         sock::GenericSocket<Type, Dom> &sock = scon.getConnection();
-        sock::PassiveDedicatedSocket<Type, Dom> &rsock =
-            static_cast<sock::PassiveDedicatedSocket<Type, Dom>&>(sock);
+        typename S::ActiveSocket &rsock =
+            static_cast<S&>(sock);
         std::vector<unsigned char> buff = rsock.read(MaxPackageSize);
 
         if(buff.back() != null)
@@ -47,8 +47,8 @@ public:
     void sendPacket(std::vector<unsigned char> &content)
     {
         sock::GenericSocket<Type, Dom> &sock = scon.getConnection();
-        sock::ActiveDedicatedSocket<Type, Dom> &wsock =
-            static_cast<sock::ActiveDedicatedSocket<Type, Dom>&>(sock);
+        typename S::ActiveSocket &wsock =
+            static_cast<typename S::ActiveSocket&>(sock);
 
         wsock.write(content);
     };
