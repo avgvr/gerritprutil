@@ -21,7 +21,7 @@ void worker(HttpHandler &h, Transceiver<Type, Dom, S> &r)
     r.sendPacket(response);
     r.closeConnection();
 
-    if(!h.isBodyValid()) return;
+    if(!h.isBodyValid()) throw std::runtime_error("Body is not valid");
 
     std::string repopath = "/home/rebovas/projects/test";
     std::vector<std::string> prrefspec = {"+refs/pull/*:refs/pull*"};
@@ -29,4 +29,6 @@ void worker(HttpHandler &h, Transceiver<Type, Dom, S> &r)
     repo.fetchRemote(h.repository().first, prrefspec);
     auto cmts = repo.listCommits(h.base(), h.head());
     for(auto &cmt : cmts) std::cout << cmt->summary() << std::endl;
+
+    // Check if GitHub user exists in Gerrit
 };

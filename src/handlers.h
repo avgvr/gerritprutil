@@ -65,7 +65,7 @@ public:
         if(delimpos != std::string::npos)
         {
             this->header = http::Header(packet.substr(0, delimpos));
-            body = packet.substr(sizeof(PacketDelim) / sizeof(char) - 1 + delimpos);
+            body = packet.substr(sizeof(PacketDelim) - 1 + delimpos);
         }
 
         std::string contentType = header.getValue("content-type");

@@ -13,7 +13,7 @@ class Transceiver
 private:
     sock::SocketConnector<Type, Dom, S> &scon;
 public:
-    constexpr static size_t MaxPackageSize = 1024 * 1024;
+    constexpr static size_t MaxPacketSize = 1024 * 1024;
 
     Transceiver() = delete;
     Transceiver(sock::SocketConnector<Type, Dom, S> &s, const int bg)
@@ -25,14 +25,14 @@ public:
         if(!scon.isClientValid()) scon.link();
 
         sock::GenericSocket<Type, Dom> &sock = scon.getConnection();
-        S &rsock =
-            static_cast<S&>(sock);
-        std::vector<unsigned char> buff = rsock.read(MaxPackageSize);
+        sock::PassiveDedicatedSocket<Type, Dom> &rsock =
+            static_cast<sock::PassiveDedicatedSocket<Type, Dom>&>(sock);
+        std::vector<unsigned char> buff = rsock.read(MaxPacketSize);
 
         if(buff.back() != null)
             throw std::runtime_error(
                 "Maximum package size is reached - "
-                + std::to_string(MaxPackageSize)
+                + std::to_string(MaxPacketSize)
             );
 
         return buff;
