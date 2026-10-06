@@ -8,6 +8,8 @@
 #include <vector>
 #include <sstream>
 #include <algorithm>
+#include <array>
+#include <stdexcept>
 
 namespace http
 {
@@ -19,24 +21,43 @@ private:
 public:
     Header() = default;
 
-    Header(const std::string &headerUnit)
+    void operator<<(const std::string &headerContent)
     {
-        const static std::string HeaderDelim = ":";
+        headers.erase(headers.begin(), headers.end());
 
-        std::stringstream sstream(headerUnit);
+        constexpr static char HeaderDelim = ':';
+
+        std::stringstream sstream(headerContent);
         std::string entry;
 
         // Acquire first header line
-        std::getline(sstream, entry);
-        std::stringstream streamhat(entry);
-        std::string word;
-        std::vector<std::string> hatKeys = {"version", "path", "method"};
+        constexpr static size_t TKNCOUNT = 3;
+        constexpr static const char *reqvhat[TKNCOUNT] = {"version", "path", "method"};
+        constexpr static const char *resvhat[TKNCOUNT] = {"phrase", "code", "version"};
 
-        for(;hatKeys.size() and streamhat >> word;)
+        std::getline(sstream, entry, '\r');
+
+        std::stringstream streamhat(entry);
+        std::string word = "";
+
+        std::vector<const char*> hatKeys;
+        char delim = ' ';
+        for(unsigned short it = 0; std::getline(streamhat, word, delim) or it < TKNCOUNT; ++it)
         {
-            headers[hatKeys.back()] = word;
-            hatKeys.pop_back();
+            if(it == 1) delim = '\n';
+            if(it == 0 and word.find("HTTP/") != std::string::npos) hatKeys.assign(resvhat, resvhat + TKNCOUNT);
+            else if(it == 0 and !word.empty())hatKeys.assign(reqvhat, reqvhat + TKNCOUNT);
+
+            if(!hatKeys.empty())
+            {
+                headers[hatKeys.back()] = word;
+                hatKeys.pop_back();
+            }
+
+            word = "";
         }
+
+        std::getline(sstream, word);
 
         while(std::getline(sstream, entry))
         {
@@ -53,6 +74,11 @@ public:
         }
     };
 
+    Header(const std::string &headerUnit)
+    {
+        this->operator<<(headerUnit);
+    };
+
     std::string getValue(const std::string &header) const
     {
         const auto value = this->headers.find(header);
@@ -60,17 +86,48 @@ public:
         else return (*value).second;
     };
 
-    bool hasHeader(std::string &h) {return headers.find(h) != headers.end();};
+    void setHeader(const std::string &header, const std::string &value)
+    {
+        headers[header] = value;
+    };
+
+    bool hasHeader(const std::string &header) const
+    {
+        return headers.find(header) != headers.end();
+    };
+
+    std::vector<unsigned char> dump() const
+    {
+        std::string header = "";
+        if(hasHeader("method") and hasHeader("path") and hasHeader("version"))
+        {
+            header += headers.at("method") + ' ' + headers.at("path") + ' ' + headers.at("version") + "\r\n";
+        }
+        if(hasHeader("phrase") and hasHeader("code") and hasHeader("version"))
+        {
+            std::string phraseDelim = headers.at("phrase") == "" ? "" : " ";
+            header += headers.at("version") + ' ' + headers.at("code") + phraseDelim + headers.at("phrase") + "\r\n";
+        }
+        else throw std::runtime_error("HTTP header is invalid");
+
+        header += "\r\n";
+
+        std::vector<unsigned char> packet(header.begin(), header.end());
+        return packet;
+    };
 
 };
 
 class Http
 {
 private:
-    const Header hdr;
-    const std::vector<unsigned char> body;
+    constexpr static char ContentType[] = "Content-Type";
+
+    Header hdr;
+    std::vector<unsigned char> body;
 public:
     constexpr static char PacketDelim[5] = "\r\n\r\n";
+
     explicit Http(const std::string &packet)
         : hdr(packet.substr(0, packet.find(PacketDelim))),
         body(
@@ -81,10 +138,34 @@ public:
             packet.end()
         ) {};
 
-    const Header& getHeader() {return hdr;};
+    const Header& getHttpHeader() const
+    {
+        return hdr;
+    };
 
-    template<class ContentType>
-    ContentType getContent() {return ContentType(body.data());};
+    std::pair<std::vector<unsigned char>, std::string> getHttpContent() const
+    {
+        return {body, hdr.getValue(ContentType)};
+    };
+
+    void setHttpContent(std::vector<unsigned char> content, std::string contentType)
+    {
+        hdr.setHeader(ContentType, contentType);
+        body = content;
+    };
+
+    void operator<<(const std::string headerContent)
+    {
+        hdr << headerContent;
+        body.clear();
+    };
+
+    std::vector<unsigned char> dump() const
+    {
+        auto packet = hdr.dump();
+        packet.insert(packet.end(), body.begin(), body.end());
+        return packet;
+    };
 };
 
 };

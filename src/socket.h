@@ -22,6 +22,9 @@ const int null = 0;
 namespace sock
 {
 
+using SslPointer = std::unique_ptr<SSL, decltype(&SSL_free)>;
+using SslCtxPointer = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>;
+
 using fd_t = int;
 
 enum class socktype
