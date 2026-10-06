@@ -6,6 +6,8 @@
 #include <system_error>
 #include <functional>
 #include <thread>
+#include <memory>
+#include <optional>
 
 #include <unistd.h>
 #include <netinet/in.h>
@@ -109,7 +111,7 @@ public:
         using Type = AddrType;
 
         Address() : addr({}) {};
-        Address(Type &a) : addr(a) {};
+        explicit Address(Type &a) : addr(a) {};
 
         const sockaddr getSockaddr() const
         {
@@ -181,6 +183,7 @@ public:
             addr.sin6_port = htons(port);
             addr.sin6_flowinfo = flowinfo;
         };
+
     };
 
     void bind(const Address &addr)
@@ -269,17 +272,54 @@ public:
     using Passive = PassiveEndpoint;
 };
 
+class BasicEncryption
+{
+public:
+    using SslPointer = std::unique_ptr<SSL, decltype(&SSL_free)>;
+    using SslCtxPointer = std::shared_ptr<SSL_CTX>;
+protected:
+    SslPointer ssl;
+    SslCtxPointer ctx;
+
+public:
+    BasicEncryption()
+        : ssl(nullptr, &SSL_free),
+        ctx(nullptr, &SSL_CTX_free)
+    {};
+
+    BasicEncryption(SSL_CTX *c)
+        : ssl(nullptr, &SSL_free),
+        ctx(c, &SSL_CTX_free)
+    {};
+
+    bool createNewSslSession()
+    {
+        ssl.reset(SSL_new(this->ctx.get()));
+        if(ssl == nullptr) return false;
+        else return true;
+    };
+
+    bool setSockToSslSession(fd_t d)
+    {
+        if(ssl == nullptr) return false;
+        if(SSL_set_fd(ssl.get(), d)) return true;
+        else return false;
+    };
+
+    bool isEncryptionWorks() {return this->ssl and this->ctx;};
+};
+
 template <socktype Type, domain Dom>
 class PassiveDedicatedSocket;
 
 template <socktype Type, domain Dom>
-class ActiveDedicatedSocket final : public GenericSocket<Type, Dom>, GenericSocket<Type, Dom>::Active
+class ActiveDedicatedSocket : virtual public GenericSocket<Type, Dom>, GenericSocket<Type, Dom>::Active
 {
 public:
     using Socket = GenericSocket<Type, Dom>;
 
     ActiveDedicatedSocket() : Socket() {};
-    ActiveDedicatedSocket(const fd_t s) : Socket(s) {};
+    explicit ActiveDedicatedSocket(const fd_t s) : Socket(s) {};
 
     void connect(const typename GenericSocket<Type, Dom>::Address &addr) override
     {
@@ -311,86 +351,111 @@ public:
 };
 
 template <socktype Type, domain Dom>
-class EncryptedActiveSocket final : public ActiveDedicatedSocket<Type, Dom>
+class EncryptedActiveSocket : public ActiveDedicatedSocket<Type, Dom>,
+                                virtual public BasicEncryption
 {
-private:
-    SslPointer ssl;
-    SslCtxPointer ctx;
-
-    void initializeSSL()
+protected:
+    bool configureDefaultCtx()
     {
-        ctx.reset(SSL_CTX_new(TLS_client_method()));
-        if(ctx == nullptr) return;
+        if(this->ctx == nullptr) return false;
 
-        SSL_CTX_set_verify(ctx.get(), SSL_VERIFY_PEER, nullptr);
+        SSL_CTX_set_verify(this->ctx.get(), SSL_VERIFY_PEER, nullptr);
 
-        if(!SSL_CTX_set_default_verify_paths(ctx.get()))
+        if(!SSL_CTX_set_default_verify_paths(this->ctx.get()))
         {
-            ctx.reset(nullptr);
-            return;
+            this->ctx.reset();
+            return false;
         }
-        if(!SSL_CTX_set_min_proto_version(ctx.get(), TLS1_2_VERSION))
+        if(!SSL_CTX_set_min_proto_version(this->ctx.get(), TLS1_2_VERSION))
         {
-            ctx.reset(nullptr);
-            return;
+            this->ctx.reset();
+            return false;
         }
-
-        ssl.reset(SSL_new(ctx.get()));
-        if(ssl == nullptr)
-        {
-            ctx.reset(nullptr);
-        }
+        return true;
     };
+
+private:
+    decltype(&EncryptedActiveSocket::configureDefaultCtx) ctxConfiguringCb = &EncryptedActiveSocket::configureDefaultCtx;;
 public:
-    EncryptedActiveSocket() {initializeSSL();};
+    EncryptedActiveSocket()
+        : ActiveDedicatedSocket<Type, Dom>(),
+        BasicEncryption(SSL_CTX_new(TLS_client_method()))
+    {};
 
     explicit EncryptedActiveSocket(const fd_t s)
-        : ActiveDedicatedSocket<Type, Dom>(s) {initializeSSL();};
+        : ActiveDedicatedSocket<Type, Dom>(s),
+        BasicEncryption(SSL_CTX_new(TLS_client_method()))
+    {};
 
-    bool isEncryptionWorks() {return ssl and ctx;};
-
-    void connect(const typename EncryptedActiveSocket::Address &addr) override final
+    void connect(const typename GenericSocket<Type, Dom>::Address &addr) override
     {
         std::array<char, 256> buff;
-        ERR_error_string_n(ERR_peek_last_error(), buff.data(), buff.size());
 
-        if(!(SSL_get_rbio(ssl.get()) and SSL_get_wbio(ssl.get())) and !SSL_set_fd(this->fd))
-            throw std::runtime_error("Failed to assign socket to a ssl session");
+        if(this->ctx == nullptr)
+        {
+            this->ctx.reset(SSL_CTX_new(TLS_client_method()), &SSL_CTX_free);
+            if(this->ctx == nullptr) 
+            {
+                ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
+                throw std::runtime_error("Failed to create SSL context"
+                                            + std::string(buff.data()));
+            }
+        }
 
-        if(isEncryptionWorks()())
-            throw std::runtime_error(std::string(buff.data(), buff.size()));
+        if(ctxConfiguringCb and !(this->*ctxConfiguringCb)())
+        {
+            ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
+            throw std::runtime_error("Falied to create a SSL context"
+                                        + std::string(buff.data()));
+        }
+        else if(ctxConfiguringCb) ctxConfiguringCb = nullptr;
+
+        if(this->ssl == nullptr and !this->createNewSslSession())
+        {
+            ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
+            throw std::runtime_error("Failed to create a SSL session"
+                                        + std::string(buff.data()));
+        }
+
+        if(!this->setSockToSslSession(this->fd))
+        {
+            ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
+            throw std::runtime_error("Failed to assign socket to a SSL session"
+                                        + std::string(buff.data()));
+        }
 
         ActiveDedicatedSocket<Type, Dom>::connect(addr);
 
-        int ret = SSL_connect(ssl.get());
+        int ret = SSL_connect(this->ssl.get());
         if(ret <= 0)
             throw std::runtime_error("Failed to create connection with error code: "
-                                     + SSL_get_error(ssl.get(), ret));
+                                        + std::to_string(
+                                        SSL_get_error(this->ssl.get(), ret)
+                                        )
+                                    );
     };
 
     void write(const std::vector<unsigned char> &data) override final
     {
-        std::array<char, 256> buff;
-        ERR_error_string_n(ERR_peek_last_error(), buff.data(), buff.size());
+        if(!this->isEncryptionWorks())
+            throw std::runtime_error("Encryption is not works");
 
-        if(isEncryptionWorks()())
-            throw std::runtime_error(std::string(buff.data(), buff.size()));
-
-        int ret = SSL_write(ssl.get(), data.data(), data.size());
+        int ret = SSL_write(this->ssl.get(), data.data(), data.size());
         if(ret <= 0) throw std::runtime_error("Failed to write data with error code: "
-                                              + SSL_get_error(ssl.get(), ret));
+                                              + std::to_string(SSL_get_error(this->ssl.get(), ret)));
     };
 };
 
 template <socktype Type, domain Dom>
-class PassiveDedicatedSocket : public GenericSocket<Type, Dom>, GenericSocket<Type, Dom>::Passive
+class PassiveDedicatedSocket : virtual public GenericSocket<Type, Dom>, GenericSocket<Type, Dom>::Passive
 {
 public:
     using ActiveSocket = ActiveDedicatedSocket<Type, Dom>;
     using Socket = GenericSocket<Type, Dom>;
 
     PassiveDedicatedSocket() : Socket(){};
-    PassiveDedicatedSocket(const fd_t s) : Socket(s) {};
+    explicit PassiveDedicatedSocket(const fd_t s) : Socket(s) {};
+    PassiveDedicatedSocket(const fd_t d, PassiveDedicatedSocket &s) : Socket(d) {};
 
     void listen(int backlog) override final
     {
@@ -399,7 +464,7 @@ public:
         if(res == -1) throw std::system_error(errno, std::generic_category());
     };
 
-    typename Socket::Passive::client accept() override final
+    typename Socket::Passive::client accept() override
     {
         using Sockaddr = typename GenericSocket<Type, Dom>::AddrType;
 
@@ -426,8 +491,8 @@ public:
 
     std::vector<unsigned char> read(const size_t n) override
     {
-        std::vector<unsigned char> buffer(n + 1, null);
         size_t remain = n + 1;
+        std::vector<unsigned char> buffer(remain, null);
 
         for(;remain > 0;)
         {
@@ -454,179 +519,247 @@ public:
 };
 
 template<socktype Type, domain Dom>
-class EncryptedPassiveSocket : public PassiveDedicatedSocket<Type, Dom>
+class EncryptedPassiveSocket : public PassiveDedicatedSocket<Type, Dom>,
+                                virtual public BasicEncryption
 {
 public:
-    constexpr static char DefaultChainFile[] = "chain.pem";
-    constexpr static char DefaultPrivateFile[] = "pkey.pem";
+    constexpr static char DefaultChainFile[] = "cert.pem";
+    constexpr static char DefaultPrivateFile[] = "key.pem";
     constexpr static unsigned char CacheID[] = "GitHub webhook server";
-    struct requisiteFiles{std::string &chain, &privkey;};
-private:
-    SslPointer ssl;
-    SslCtxPointer ctx;
+    struct requisiteFiles{std::string chain, privkey;};
 
-    void initializeCtx(const requisiteFiles &files)
+protected:
+    bool configureDefaultCtx(const requisiteFiles files =
+            {DefaultChainFile, DefaultPrivateFile})
     {
-        long opts = SSL_OP_IGNORE_UNEXPECTED_EOF
+        if(this->ctx == nullptr) return false;
+
+        constexpr long opts = SSL_OP_IGNORE_UNEXPECTED_EOF
             | SSL_OP_NO_RENEGOTIATION
             | SSL_OP_CIPHER_SERVER_PREFERENCE;
 
-        ctx.reset(SSL_CTX_new(TLS_server_method()));
-        if(ctx == nullptr) return;
-
-        if(!SSL_CTX_set_min_proto_version(ctx.get(), TLS1_2_VERSION))
+        if(!SSL_CTX_set_min_proto_version(this->ctx.get(), TLS1_2_VERSION))
         {
-            ctx.reset(nullptr);
+            this->ctx.reset();
         }
 
-        SSL_CTX_set_options(ctx.get(), opts);
-        if(SSL_CTX_use_certificate_chain_file(ctx, files.chain.data()) <= 0)
+        SSL_CTX_set_options(this->ctx.get(), opts);
+        if(SSL_CTX_use_certificate_chain_file(this->ctx.get(), files.chain.data()) <= 0)
         {
-            ctx.reset(nullptr);
+            this->ctx.reset();
+            return false;
         }
 
-        if(SSL_CTX_use_PrivateKey_file(ctx.get(), files.privkey.data(), SSL_FILETYPE_PEM) <= 0)
+        if(SSL_CTX_use_PrivateKey_file(this->ctx.get(), files.privkey.data(), SSL_FILETYPE_PEM) <= 0)
         {
-            ctx.reset(nullptr);
+            this->ctx.reset();
+            return false;
         }
 
-        if(SSL_CTX_set_session_id_context(ctx.get(), CacheID, sizeof(CacheID)) <= 0)
+        if(SSL_CTX_set_session_id_context(this->ctx.get(), CacheID, sizeof(CacheID)) <= 0)
         {
-            ctx.reset(nullptr);
+            this->ctx.reset();
+            return false;
         }
-        SSL_CTX_set_session_cache_mode(ctx.get(), SSL_SESS_CACHE_SERVER);
-        SSL_CTX_sess_set_cache_size(ctx.get(), 16);
-        SSL_CTX_set_timeout(ctx.get(), 3600);
-        SSL_CTX_set_verify(ctx.get(), SSL_VERIFY_NONE, nullptr);
+        SSL_CTX_set_session_cache_mode(this->ctx.get(), SSL_SESS_CACHE_SERVER);
+        SSL_CTX_sess_set_cache_size(this->ctx.get(), 16);
+        SSL_CTX_set_timeout(this->ctx.get(), 3600);
+        SSL_CTX_set_verify(this->ctx.get(), SSL_VERIFY_NONE, nullptr);
+
+        return true;
     };
+
+private:
+    requisiteFiles reqfiles{DefaultChainFile, DefaultPrivateFile};
+    decltype(&EncryptedPassiveSocket::configureDefaultCtx) ctxConfiguringCb = &EncryptedPassiveSocket::configureDefaultCtx;
 
 public:
-    using ActiveSocket = EncryptedActiveSocket<Type, Dom>;
+    EncryptedPassiveSocket()
+        :PassiveDedicatedSocket<Type, Dom>(),
+        BasicEncryption(SSL_CTX_new(TLS_server_method()))
+    {};
 
-    explicit EncryptedPassiveSocket(const requisiteFiles &r =
-                            {DefaultChainFile, DefaultPrivateFile})
-    {
-        initializeCtx();
-    };
+    explicit EncryptedPassiveSocket(const requisiteFiles r)
+        :PassiveDedicatedSocket<Type, Dom>(),
+        BasicEncryption(SSL_CTX_new(TLS_server_method())),
+        reqfiles{r.chain, r.privkey}
+    {};
 
     explicit EncryptedPassiveSocket(const fd_t s,
-                                    const requisiteFiles &r =
+                                    const requisiteFiles r =
                                     {DefaultChainFile, DefaultPrivateFile})
-        : PassiveDedicatedSocket<Type, Dom>(s)
+        : PassiveDedicatedSocket<Type, Dom>(s),
+        BasicEncryption(SSL_CTX_new(TLS_server_method())),
+        requisiteFiles{r.chain, r.privkey}
+    {};
+
+    EncryptedPassiveSocket(const fd_t d, EncryptedPassiveSocket &s)
+        : PassiveDedicatedSocket<Type, Dom>(d),
+        BasicEncryption(s.ctx),
+        reqfiles{s.reqfiles.chain, s.reqfiles.privkey},
+        ctxConfiguringCb(s.ctxConfiguringCb)
+    {};
+
+    typename GenericSocket<Type, Dom>::Passive::client accept() override final
     {
-        initializeCtx(r);
+        std::array<char, 256> buff;
+
+        if(this->ctx == nullptr)
+        {
+            this->ctx.reset(SSL_CTX_new(TLS_client_method()), &SSL_CTX_free);
+            if(this->ctx == nullptr) 
+            {
+                ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
+                throw std::runtime_error("Failed to create SSL context"
+                                            + std::string(buff.data()));
+            }
+        }
+
+        if(ctxConfiguringCb and !(this->*ctxConfiguringCb)(reqfiles))
+        {
+            ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
+            throw std::runtime_error("Falied to create a SSL context" + std::string(buff.data()));
+        }
+        else if(ctxConfiguringCb) ctxConfiguringCb = nullptr;
+
+        return PassiveDedicatedSocket<Type, Dom>::accept();
     };
 
     std::vector<unsigned char> read(const size_t n) override final
     {
+        if(!this->isEncryptionWorks())
+            throw std::runtime_error("Encryption is not works");
+
         std::array<char, 256> buff;
 
-        if(ctx == nullptr)
+        size_t remain = n + 1;
+        std::vector<unsigned char> packet(remain, null);
+
+        while(remain > 0)
         {
-            ERR_error_string_n(ERR_peek_error(), buff.data(), buff.size());
-            throw std::runtime_error(buff.data());
-        }
-
-        if(ssl == nullptr)
-        {
-            ssl.reset(SSL_new(ctx.get()));
-            if(ssl == nullptr)
+            size_t read;
+            bool isReadSuccess = SSL_read_ex(
+                                this->ssl.get(),
+                                packet.data() + (n + 1 - remain),
+                                remain,
+                                &read
+                            );
+            if(isReadSuccess)
             {
-                ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
-                throw std::runtime_error(buff.data());
+                remain -= read;
             }
-
-            if(!SSL_set_fd(this->fd))
+            else
             {
-                ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
-                throw std::runtime_error(buff.data());
+                size_t pending = SSL_has_pending(this->ssl.get()) ?
+                                    SSL_pending(this->ssl.get()) : 0;
+                if(!pending) break;
+
+                int err = SSL_get_error(this->ssl.get(), isReadSuccess);
+                // Error is retryable
+                if(err == SSL_ERROR_WANT_READ) continue;
+                // Client cancel connection
+                else if(err == SSL_ERROR_ZERO_RETURN) break;
+                // Error is non-retryable
+                else
+                {
+                    char buff[256];
+                    // ERR_error_string_n(err, buff, 256);
+                    throw std::runtime_error("Failed to read data with error code: "
+                                                    + std::to_string(err)
+                                                    + ", " + buff);
+
+                }
             }
         }
-
-        std::vector<unsigned char> packet(n);
-
-        int ret = SSL_read(ssl.get(), packet.data(), packet.size());
-        if(ret <= 0) throw std::runtime_error("Failed to write data with error code: "
-                                              + SSL_get_error(ssl.get(), ret));
 
         return packet;
     };
 };
 
-template<socktype Type, domain Dom, class Sock = PassiveDedicatedSocket<Type, Dom>>
-class SocketConnector final : public Sock
+template<socktype Sock, domain Dom>
+class SocketConnector : public ActiveDedicatedSocket<Sock, Dom>,
+                        public PassiveDedicatedSocket<Sock, Dom>
 {
-private:
-    size_t backlog;
 public:
-    SocketConnector() : backlog(std::thread::hardware_concurrency()) {};
-    SocketConnector(size_t bg) : backlog(bg) {};
+    using Socket = GenericSocket<Sock, Dom>;
+    using Address = typename Socket::Address;
+private:
+    std::optional<Address> a;
+    using PassiveDedicatedSocket<Sock, Dom>::accept;
+public:
+    SocketConnector() : Socket() {};
+    SocketConnector(fd_t d) : Socket(d) {};
 
-    bool isClientValid()
+    void connect()
     {
-        try{
-            int socktype = this->template getSocketOption<int>(Protocol::api, SocketOption::type);
-        }
-        catch(std::system_error &err)
-        {
-            return false;
-        }
-
-        return true;
+        if(a.has_value()) ActiveDedicatedSocket<Sock, Dom>::connect(a);
+        else throw std::runtime_error("Unable perform reconnection");
     };
 
-    void link() {};
+    void connect(const Address &addr) override final
+    {
+        this->a = addr;
+        ActiveDedicatedSocket<Sock, Dom>::connect(addr);
+    };
 
-    GenericSocket<socktype::stream, Dom>& getConnection() {return *this;}
-
-    size_t getBacklog() {return this->backlog;};
+    SocketConnector peerAccept()
+    {
+        return SocketConnector(PassiveDedicatedSocket<Sock, Dom>::accept().sock);
+    };
 };
 
-template<domain Dom, class Sock>
-class SocketConnector<socktype::stream, Dom, Sock> final
-    : public Sock
+template<domain Dom>
+class SocketConnector<socktype::datagram, Dom> {};
+
+template<socktype Sock, domain Dom>
+class EncryptedSocketConnector : virtual public EncryptedActiveSocket<Sock, Dom>,
+                                virtual public EncryptedPassiveSocket<Sock, Dom>
 {
-private:
-    std::unique_ptr<Sock> client;
-    size_t backlog;
 public:
-    SocketConnector() : backlog(std::thread::hardware_concurrency()) {};
-    SocketConnector(size_t bg) : backlog(bg) {};
+    using Socket = GenericSocket<Sock, Dom>;
+    using Address = typename Socket::Address;
+private:
+    std::optional<Address> a;
+    using EncryptedPassiveSocket<Sock, Dom>::accept;
+public:
+    EncryptedSocketConnector() : Socket(), BasicEncryption() {};
+    EncryptedSocketConnector(fd_t d) : Socket(d), BasicEncryption() {};
 
-    bool isClientValid()
+    void connect()
     {
-        int socktype;
-        try{
-            if(client)
-                client->template getSocketOption<int>(
-                    Protocol::api,
-                    SocketOption::type
-                );
-            else return false;
-        }
-        catch(std::system_error &err)
+        if(a.has_value()) EncryptedActiveSocket<Sock, Dom>::connect(a);
+        else throw std::runtime_error("Unable perform reconnection");
+    };
+
+    void connect(const typename GenericSocket<Sock, Dom>::Address &addr) override final
+    {
+        this->a = addr;
+
+        EncryptedActiveSocket<Sock, Dom>::connect(addr);
+    };
+
+    EncryptedSocketConnector peerAccept()
+    {
+        std::array<char, 256> buff;
+        auto &res = SocketConnector(EncryptedPassiveSocket<Sock, Dom>::accept().sock, *this);
+
+        if(!res.createNewSslSession())
         {
-            return false;
+            ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
+            throw std::runtime_error("Failed to create a SSL session" + std::string(buff.data()));
         }
 
-        return true;
-    };
+        if(!this->setFdToSslSession(this->fd))
+        {
+            ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
+            throw std::runtime_error("Failed to create a SSL session" + std::string(buff.data()));
+        }
 
-    void link()
-    {
-        this->client.reset(nullptr);
-        this->client = std::make_unique<Sock>(this->accept().socket);
-    };
-
-    GenericSocket<socktype::stream, Dom>& getConnection() {return *client;}
-
-    size_t getBacklog() {return this->backlog;};
-
-    void bind(const typename Sock::Address &addr)
-    {
-        Sock::bind(addr);
-        this->listen(backlog);
+        return res;
     };
 };
+
+template<domain Dom>
+class EncryptedSocketConnector<socktype::datagram, Dom> {};
 
 };

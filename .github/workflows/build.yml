@@ -24,6 +24,8 @@ jobs:
         run: cmake --version
       - name: Check GCC c++ compiler
         run: g++ --version
+      - name: Check the required header files
+        run: echo "#include <git2.h>" | g++ -c -E -
 
   build-job:
     name: Build source code

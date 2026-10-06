@@ -14,4 +14,5 @@ target_sources(gerritprutil
             ${CMAKE_CURRENT_SOURCE_DIR}/handlers.h
             ${CMAKE_CURRENT_SOURCE_DIR}/workers.h
             ${CMAKE_CURRENT_SOURCE_DIR}/http.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/git.h
 )
