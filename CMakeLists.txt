@@ -12,7 +12,20 @@ enable_testing()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+link_libraries($<$<CXX_COMPILER_ID:GCC>:pthread>)
+
 include(FetchContent)
+
+FetchContent_Declare(libgit2
+    GIT_REPOSITORY https://github.com/libgit2/libgit2.git
+    GIT_TAG v1.9.7
+)
+
+set(BUILD_EXAMPLES OFF CACHE BOOL INTERNAL)
+set(BUILD_TESTING OFF CACHE BOOL INTERNAL)
+set(BUILD_CLI OFF CACHE BOOL INTERNAL)
+FetchContent_MakeAvailable(libgit2)
+
 FetchContent_Declare(googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
     GIT_TAG 063de7e9578f82b369302001269680b4b1553359
@@ -26,12 +39,18 @@ FetchContent_Declare(json
 )
 FetchContent_MakeAvailable(json)
 
+find_package(OpenSSL REQUIRED)
+
 add_executable(gerritprutil)
 
 add_library(libc INTERFACE)
 target_link_libraries(gerritprutil
-    PRIVATE libc
-    PRIVATE nlohmann_json::nlohmann_json
+    PRIVATE
+        libc
+        nlohmann_json::nlohmann_json
+        libgit2package
+        OpenSSL::SSL
+        OpenSSL::Crypto
 )
 
 target_compile_definitions(gerritprutil

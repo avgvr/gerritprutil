@@ -53,12 +53,38 @@ public:
         }
     };
 
-    std::string getValue(const std::string &header)
+    std::string getValue(const std::string &header) const
     {
         const auto value = this->headers.find(header);
         if(value == headers.end()) return "";
         else return (*value).second;
     };
+
+    bool hasHeader(std::string &h) {return headers.find(h) != headers.end();};
+
+};
+
+class Http
+{
+private:
+    const Header hdr;
+    const std::vector<unsigned char> body;
+public:
+    constexpr static char PacketDelim[5] = "\r\n\r\n";
+    explicit Http(const std::string &packet)
+        : hdr(packet.substr(0, packet.find(PacketDelim))),
+        body(
+            packet.find(PacketDelim) != std::string::npos ?
+                packet.begin() + sizeof(PacketDelim) - 1 +
+                    packet.find(PacketDelim):
+                packet.end(),
+            packet.end()
+        ) {};
+
+    const Header& getHeader() {return hdr;};
+
+    template<class ContentType>
+    ContentType getContent() {return ContentType(body.data());};
 };
 
 };
