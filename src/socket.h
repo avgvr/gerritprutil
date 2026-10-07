@@ -13,9 +13,12 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+
+#include <iostream>
 
 const int null = 0;
 
@@ -76,6 +79,7 @@ protected:
     static const socktype type = T;
     static const domain dom = D;
     static const sa_family_t family = static_cast<sa_family_t>(dom);
+    static const int stype = static_cast<sa_family_t>(type);
 
     fd_t fd;
 
@@ -110,6 +114,25 @@ public:
     public:
         using Type = AddrType;
 
+        static AddrType getAddressByHostname(const std::string &hostname, const std::string &port)
+        {
+            struct addrinfo hints = {}, *resolves = nullptr;
+            memset(&hints, 0, sizeof(hints));
+            hints.ai_socktype = stype;
+            hints.ai_family = family;
+            hints.ai_flags = AI_PASSIVE | AI_NUMERICSERV;
+
+            int resolutionResult = getaddrinfo(hostname.data(), port.data(), &hints, &resolves);
+
+            if(resolutionResult != 0)
+                throw std::runtime_error(gai_strerror(resolutionResult));
+
+            AddrType addr = *reinterpret_cast<AddrType*>(resolves->ai_addr);
+
+            freeaddrinfo(resolves);
+            return addr;
+        };
+
         Address() : addr({}) {};
         explicit Address(Type &a) : addr(a) {};
 
@@ -136,7 +159,7 @@ public:
 
             if (r == 0)
             {
-                throw std::runtime_error("Address is not in presentation format");
+                addr = getAddressByHostname(inaddr, std::to_string(port));
             }
             else if(r < 0)
             {
@@ -160,17 +183,17 @@ public:
 
             addr.sin6_family = family;
             addr.sin6_port = htons(port);
-            addr.sin6_flowinfo = flowinfo;
             int r = inet_pton(family, in6addr.c_str(), &addr.sin_addr);
 
             if (r == 0)
             {
-                throw std::runtime_error("Address is not in presentation format");
+                addr = getAddressByHostname(in6addr, std::to_string(port));
             }
             else if(r < 0)
             {
                 throw std::system_error(errno, std::generic_category());
             }
+            addr.sin6_flowinfo = flowinfo;
         };
 
         void setPlacement(const struct in6_addr &in6addr, const in_port_t port,
@@ -440,9 +463,22 @@ public:
         if(!this->isEncryptionWorks())
             throw std::runtime_error("Encryption is not works");
 
-        int ret = SSL_write(this->ssl.get(), data.data(), data.size());
-        if(ret <= 0) throw std::runtime_error("Failed to write data with error code: "
-                                              + std::to_string(SSL_get_error(this->ssl.get(), ret)));
+        int ret = 0;
+        char errbuff[256] = {};
+        while(true)
+        {
+            ret = SSL_write(this->ssl.get(), data.data(), data.size());
+            if(ret <= 0)
+            {
+                unsigned long errcode = SSL_get_error(this->ssl.get(), ret);
+                ERR_error_string(errcode, errbuff);
+                if(errcode == SSL_ERROR_WANT_WRITE) continue;
+                else if(errcode == SSL_ERROR_ZERO_RETURN) break;
+                throw std::runtime_error("Failed to write data with error code: "
+                                         + std::to_string(errcode) + ", " + errbuff);
+            }
+            else break;
+        }
     };
 };
 
