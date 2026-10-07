@@ -6,29 +6,40 @@
 #include "transceiver.h"
 
 
-template<sock::socktype Type, sock::domain Dom, class S>
-void worker(EchoHandler &h, Transceiver<Type, Dom, S> &r)
+template<class Connector>
+void worker(EchoHandler &h, Connector &conn)
 {
-    h.acceptRequest(r.receivePacket());
-    r.closeConnection();
+    Transceiver shadow(conn);
+
+    auto peer = shadow.peerLink();
+    Transceiver peerTransceiver(peer);
+
+    peerTransceiver.acceptRequest(peerTransceiver.receivePacket());
+    peerTransceiver.closeConnection();
 };
 
-template<sock::socktype Type, sock::domain Dom, class S>
-void worker(HttpHandler &h, Transceiver<Type, Dom, S> &r)
+template<class Connector>
+void worker(HttpHandler &h, Connector &conn)
 {
-    h.acceptRequest(r.receivePacket());
+    Transceiver shadow(conn);
+
+    auto peer = shadow.peerLink();
+    Transceiver peerTransceiver(peer);
+
+    h.acceptRequest(peerTransceiver.receivePacket());
     std::vector<unsigned char> response = h.getResponse();
-    r.sendPacket(response);
-    r.closeConnection();
+    peerTransceiver.sendPacket(response);
 
     if(!h.isBodyValid()) throw std::runtime_error("Body is not valid");
 
-    std::string repopath = "/home/rebovas/projects/test";
+    std::string repopath = "/tmp/" + h.repository().second;
     std::vector<std::string> prrefspec = {"+refs/pull/*:refs/pull*"};
     git::Repository repo(repopath);
     repo.fetchRemote(h.repository().first, prrefspec);
     auto cmts = repo.listCommits(h.base(), h.head());
     for(auto &cmt : cmts) std::cout << cmt->summary() << std::endl;
 
-    // Check if GitHub user exists in Gerrit
+    // Fetch msg-hook from gerrit into above repository if it is not exists
+    // Create external gerrit user imported from GitHub if it is not exists
+    // Verify commits email
 };

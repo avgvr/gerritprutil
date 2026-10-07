@@ -605,8 +605,9 @@ protected:
         return true;
     };
 
-private:
+protected:
     requisiteFiles reqfiles{DefaultChainFile, DefaultPrivateFile};
+private:
     decltype(&EncryptedPassiveSocket::configureDefaultCtx) ctxConfiguringCb = &EncryptedPassiveSocket::configureDefaultCtx;
 
 public:
@@ -631,7 +632,7 @@ public:
 
     EncryptedPassiveSocket(const fd_t d, EncryptedPassiveSocket &s)
         : PassiveDedicatedSocket<Type, Dom>(d),
-        BasicEncryption(s.ctx),
+        BasicEncryption(s.ctx.get()),
         reqfiles{s.reqfiles.chain, s.reqfiles.privkey},
         ctxConfiguringCb(s.ctxConfiguringCb)
     {};
@@ -754,12 +755,29 @@ class EncryptedSocketConnector : virtual public EncryptedActiveSocket<Sock, Dom>
 public:
     using Socket = GenericSocket<Sock, Dom>;
     using Address = typename Socket::Address;
+    using RequisiteFiles = typename EncryptedPassiveSocket<Sock, Dom>::requisiteFiles;
 private:
     std::optional<Address> a;
     using EncryptedPassiveSocket<Sock, Dom>::accept;
 public:
     EncryptedSocketConnector() : Socket(), BasicEncryption() {};
-    EncryptedSocketConnector(fd_t d) : Socket(d), BasicEncryption() {};
+    explicit EncryptedSocketConnector(const RequisiteFiles reqs)
+        : Socket(),
+        BasicEncryption(),
+        EncryptedPassiveSocket<Sock, Dom>(reqs)
+    {};
+    EncryptedSocketConnector(
+                                const fd_t d,
+                                const RequisiteFiles &reqs
+                            )
+        : Socket(d),
+        BasicEncryption()
+    {};
+    EncryptedSocketConnector(const fd_t d, EncryptedSocketConnector &c)
+        : Socket(d),
+        BasicEncryption(),
+        EncryptedPassiveSocket<Sock, Dom>(d, dynamic_cast<EncryptedPassiveSocket<Sock, Dom>&>(c))
+    {};
 
     void connect()
     {
@@ -777,7 +795,7 @@ public:
     EncryptedSocketConnector peerAccept()
     {
         std::array<char, 256> buff;
-        auto &res = SocketConnector(EncryptedPassiveSocket<Sock, Dom>::accept().sock, *this);
+        EncryptedSocketConnector res = EncryptedSocketConnector(accept().sock, *this);
 
         if(!res.createNewSslSession())
         {
@@ -785,7 +803,7 @@ public:
             throw std::runtime_error("Failed to create a SSL session" + std::string(buff.data()));
         }
 
-        if(!this->setFdToSslSession(this->fd))
+        if(!this->setSockToSslSession(this->fd))
         {
             ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
             throw std::runtime_error("Failed to create a SSL session" + std::string(buff.data()));

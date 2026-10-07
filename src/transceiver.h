@@ -7,27 +7,24 @@
 
 #include <thread>
 
-template<sock::socktype Type, sock::domain Dom, class S>
+template<class Connector>
 class Transceiver
 {
 private:
-    sock::SocketConnector<Type, Dom, S> &scon;
+    Connector &scon;
 public:
     constexpr static size_t MaxPacketSize = 1024 * 1024;
 
     Transceiver() = delete;
-    Transceiver(sock::SocketConnector<Type, Dom, S> &s, const int bg)
-        : scon(s, bg) {};
-    explicit Transceiver(sock::SocketConnector<Type, Dom, S> &sc) : scon(sc) {};
+    explicit Transceiver(Connector &s) : scon(s) {};
+
+    void switchConnection(Connector &s) {scon = s;};
+
+    Connector peerLink() {return scon.peerAccept();};
 
     std::vector<unsigned char> receivePacket()
     {
-        if(!scon.isClientValid()) scon.link();
-
-        sock::GenericSocket<Type, Dom> &sock = scon.getConnection();
-        sock::PassiveDedicatedSocket<Type, Dom> &rsock =
-            static_cast<sock::PassiveDedicatedSocket<Type, Dom>&>(sock);
-        std::vector<unsigned char> buff = rsock.read(MaxPacketSize);
+        std::vector<unsigned char> buff = scon.read(MaxPacketSize);
 
         if(buff.back() != null)
             throw std::runtime_error(
@@ -38,17 +35,8 @@ public:
         return buff;
     };
 
-    void closeConnection()
-    {
-        scon.getConnection().~GenericSocket<Type, Dom>();
-    }
-
     void sendPacket(std::vector<unsigned char> &content)
     {
-        sock::GenericSocket<Type, Dom> &sock = scon.getConnection();
-        typename S::ActiveSocket &wsock =
-            static_cast<typename S::ActiveSocket&>(sock);
-
-        wsock.write(content);
+        scon.write(content);
     };
 };
