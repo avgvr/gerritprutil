@@ -69,8 +69,8 @@ target_compile_definitions(gerritprutil
 
 target_include_directories(gerritprutil
     PRIVATE
-        ${LIBGIT2_INCLUDES}
-        ${JWT_INCLUDE_PATH}
+        $<TARGET_PROPERTY:libgit2package,INCLUDE_DIRECTORIES>
+        $<TARGET_PROPERTY:jwt-cpp,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
 add_subdirectory(src)
