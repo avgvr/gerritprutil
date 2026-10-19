@@ -10,6 +10,11 @@
 #include <algorithm>
 #include <array>
 #include <stdexcept>
+#include <cstring>
+
+#include <openssl/bio.h>
+#include <openssl/evp.h>
+#include <openssl/buffer.h>
 
 namespace http
 {
@@ -21,9 +26,11 @@ private:
 public:
     Header() = default;
 
+    void erase() {headers.erase(headers.begin(), headers.end());};
+
     void operator<<(const std::string &headerContent)
     {
-        headers.erase(headers.begin(), headers.end());
+        erase();
 
         constexpr static char HeaderDelim = ':';
 
@@ -96,6 +103,32 @@ public:
         return headers.find(header) != headers.end();
     };
 
+    void addBasicAuthentication(const std::string &authstring)
+    {
+        BIO *bio, *b64;
+        BUF_MEM *bufferMem;
+
+        b64 = BIO_new(BIO_f_base64());
+        bio = BIO_new(BIO_s_mem());
+        bio = BIO_push(b64, bio);
+
+        BIO_set_flags(bio, BIO_FLAGS_BASE64_NO_NL);
+        BIO_write(bio, authstring.c_str(), authstring.length());
+        BIO_flush(bio);
+        BIO_get_mem_ptr(bio, &bufferMem);
+
+        std::string auth(bufferMem->data, bufferMem->length);
+
+        headers["Authorization"] = "Basic " + auth;
+
+        BIO_free_all(bio);
+    };
+
+    void addBearerAuthentication(const std::string &token)
+    {
+        headers["Authorization"] = "Bearer " + token;
+    };
+
     std::vector<unsigned char> dump() const
     {
         std::string header = "";
@@ -103,12 +136,26 @@ public:
         {
             header += headers.at("method") + ' ' + headers.at("path") + ' ' + headers.at("version") + "\r\n";
         }
-        if(hasHeader("phrase") and hasHeader("code") and hasHeader("version"))
+        else if(hasHeader("phrase") and hasHeader("code") and hasHeader("version"))
         {
             std::string phraseDelim = headers.at("phrase") == "" ? "" : " ";
             header += headers.at("version") + ' ' + headers.at("code") + phraseDelim + headers.at("phrase") + "\r\n";
         }
         else throw std::runtime_error("HTTP header is invalid");
+
+        for(const auto& [h, v] : headers)
+        {
+            if(h == "method" or h == "code" or
+                h == "path" or h == "version" or
+                h == "phrase")
+            {
+                continue;
+            }
+            else
+            {
+                header += h + ": " + v + "\r\n";
+            }
+        }
 
         header += "\r\n";
 
@@ -128,6 +175,8 @@ private:
 public:
     constexpr static char PacketDelim[5] = "\r\n\r\n";
 
+    Http() = default;
+
     explicit Http(const std::string &packet)
         : hdr(packet.substr(0, packet.find(PacketDelim))),
         body(
@@ -138,26 +187,45 @@ public:
             packet.end()
         ) {};
 
-    const Header& getHttpHeader() const
+    Header& getHttpHeader()
     {
         return hdr;
     };
 
-    std::pair<std::vector<unsigned char>, std::string> getHttpContent() const
+    std::pair<const std::vector<unsigned char>&, std::string> getHttpContent() const
     {
         return {body, hdr.getValue(ContentType)};
     };
 
-    void setHttpContent(std::vector<unsigned char> content, std::string contentType)
+    void setHttpContent(const std::vector<unsigned char> &content, const std::string &contentType)
     {
         hdr.setHeader(ContentType, contentType);
         body = content;
     };
 
-    void operator<<(const std::string headerContent)
+    void erase() {hdr.erase(); body.clear();};
+
+    void operator<<(const std::vector<unsigned char> &packet)
     {
-        hdr << headerContent;
-        body.clear();
+        std::string packetString(packet.begin(), packet.end());
+
+        size_t packetDelimiter = packetString.find(PacketDelim);
+        std::string header =
+            std::string(
+                packetString.begin(),
+                    packetDelimiter != std::string::npos ?
+                    packetString.begin() + packetDelimiter :
+                    packetString.end());
+        std::string content =
+            std::string(
+                packetDelimiter != std::string::npos ?
+                packetString.begin() + packetDelimiter + sizeof(PacketDelim ) - 1:
+                packetString.end(),
+            packetString.end()
+        );
+
+        hdr << header;
+        body = std::vector<unsigned char>(content.begin(), content.end());
     };
 
     std::vector<unsigned char> dump() const
