@@ -41,6 +41,14 @@ FetchContent_MakeAvailable(json)
 
 find_package(OpenSSL REQUIRED)
 
+fetchcontent_declare(jwt-cpp
+    GIT_REPOSITORY https://github.com/Thalhammer/jwt-cpp.git
+    GIT_TAG v0.7.2
+)
+
+set(JWT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+fetchcontent_makeavailable(jwt-cpp)
+
 add_executable(gerritprutil)
 
 add_library(libc INTERFACE)
@@ -51,6 +59,7 @@ target_link_libraries(gerritprutil
         libgit2package
         OpenSSL::SSL
         OpenSSL::Crypto
+        jwt-cpp::jwt-cpp
 )
 
 target_compile_definitions(gerritprutil
