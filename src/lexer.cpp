@@ -60,31 +60,33 @@ token ArgumentLexer::tokenize()
                 this->letterForwards(lexeme);
                 return {TokenType::T_EQUALS, lexeme};
             default:
-                if(std::isdigit(ch))
-                {
-                    do
-                    {
-                        ch = this->letterForwards(lexeme);
-                    }while(std::isdigit(ch));
-                    tkn = TokenType::T_NUMBER;
-                    if(!(ch == ' ' or ch == '\0'))
-                    {
-                        ch = this->letterForwards(lexeme);
-                        tkn = TokenType::T_UNKNOWN;
-                    }
-                }
-                else
-                {
-                    char bracket = '\0';
-                    if(ch == '\"' or ch == '\'') bracket = ch;
+                while(std::isdigit(ch))
+                    ch = this->letterForwards(lexeme);
 
-                    do{
-                        ch = this->letterForwards(lexeme);
-                    }while(!(ch == '\"' or ch == '\'' or ch == '\0')
-                            and (bracket or ch != ' '));
+                tkn = TokenType::T_NUMBER;
+                if(ch != ' ' and ch)
+                {
                     tkn = TokenType::T_STRING;
-                    if(bracket and ch != bracket) tkn = TokenType::T_UNKNOWN;
-                    else if(bracket) ch = this->letterForwards(lexeme);
+                    char bracket = '\0';
+                    if(ch == '\'' and ch == '\"') bracket = ch;
+
+                    ch = letterForwards(lexeme);
+                    while(ch != ' ' and ch != bracket and ch)
+                    {
+                        if((ch == '\'' or ch == '\"') and ch != bracket)
+                        {
+                            tkn = TokenType::T_UNKNOWN;
+                            break;
+                        }
+                        ch = letterForwards(lexeme);
+                    }
+
+                    if(ch == bracket and ch)
+                        ch = letterForwards(lexeme);
+                    else if(bracket and ch != bracket)
+                        tkn = TokenType::T_UNKNOWN;
+                    else if(!bracket and ch != ' ' and ch)
+                        tkn = TokenType::T_UNKNOWN;
                 }
                 return {tkn, lexeme};
         }

@@ -87,6 +87,7 @@ public:
         }
         else throw std::runtime_error("Option is expected");
 
+        currentToken = lexer.tokenize();
         return opt;
     };
 
