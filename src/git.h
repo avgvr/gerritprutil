@@ -7,11 +7,49 @@
 #include <memory>
 #include <stdexcept>
 #include <vector>
+#include <filesystem>
 
 #include <git2.h>
 
 namespace git
 {
+
+struct pushPayload
+{
+    const char *username, *pubkeyfile, *privkeyfile;
+    std::string output;
+};
+
+int sshCredentials(
+    git_credential **out,
+    const char *url,
+    const char *username_from_url,
+    unsigned int allowed_types,
+    void *payload
+)
+{
+    pushPayload creds = *reinterpret_cast<pushPayload*>(payload);
+
+    if(allowed_types & GIT_CREDENTIAL_SSH_KEY)
+    {
+        const char *user = username_from_url ? username_from_url : creds.username;
+
+        return git_credential_ssh_key_new(out, user, creds.pubkeyfile, creds.privkeyfile, nullptr);
+    }
+
+    return GIT_PASSTHROUGH;
+};
+
+int sidebandProgress(const char* str, int len, void *payload)
+{
+    pushPayload *capture = reinterpret_cast<pushPayload*>(payload);
+
+    std::string msg(str, len);
+
+    capture->output.append(msg);
+
+    return 0;
+};
 
 class Commit
 {
@@ -24,7 +62,17 @@ public:
     Commit(Commit &&) = default;
     ~Commit() {if(commit) git_commit_free(commit);}
 
-    std::string summary(){return std::string(git_commit_summary(commit));};
+    const std::string summary() {return std::string(git_commit_summary(commit));};
+    const git_signature author() {return *git_commit_author(commit);};
+    const std::string hash()
+    {
+        const git_oid *id = git_commit_id(commit);
+
+        std::string commitHash(GIT_OID_SHA1_HEXSIZE, '\0');
+        git_oid_tostr(commitHash.data(), commitHash.size() + 1, id);
+
+        return commitHash;
+    };
 };
 
 class Repository
@@ -33,7 +81,7 @@ private:
     int validness;
     git_repository *repo = nullptr;
 
-    void handleResult(int result)
+    void handleResult(const int result)
     {
         if(result < 0)
         {
@@ -49,7 +97,7 @@ public:
         : validness(git_libgit2_init())
     {
     };
-    explicit Repository(std::string &path) noexcept
+    explicit Repository(const std::string &path) noexcept
         : validness(git_libgit2_init())
     {
         if(validness > -1)
@@ -84,7 +132,7 @@ public:
                 + " is not valid");
     }
 
-    void fetchRemote(const std::string url, const std::vector<std::string> refspecs)
+    void fetchRemote(const std::string &url, const std::vector<std::string> &refspecs)
     {
         isValid();
 
@@ -94,7 +142,7 @@ public:
             specs[i] = refspecs[i].data();
         }
         git_strarray gitspec = {const_cast<char **>(specs.data()), specs.size()};
-        git_remote *remote = NULL;
+        git_remote *remote = nullptr;
 
         handleResult(git_remote_create_anonymous(&remote, repo, url.c_str()));
         handleResult(git_remote_fetch(remote, &gitspec, NULL, NULL));
@@ -126,6 +174,34 @@ public:
         git_revwalk_free(walker);
 
         return commits;
+    };
+
+std::string pushRemote(const std::string &url, const std::vector<std::string> &refspecs, const std::filesystem::path &pubkey, const std::string &user)
+    {
+        isValid();
+
+        std::vector<const char *> specs(refspecs.size());
+        for(int i = 0; i < specs.size(); i++)
+        {
+            specs[i] = refspecs[i].data();
+        }
+        git_strarray gitspec = {const_cast<char **>(specs.data()), specs.size()};
+        git_remote *remote = nullptr;
+
+        git_push_options options = GIT_PUSH_OPTIONS_INIT;
+
+        pushPayload payload = {user.c_str(), pubkey.c_str(), nullptr, ""};
+
+        options.callbacks.payload = &payload;
+        options.callbacks.credentials = &sshCredentials;
+        options.callbacks.sideband_progress = sidebandProgress;
+
+        handleResult(git_remote_create_anonymous(&remote, repo, url.c_str()));
+        handleResult(git_remote_push(remote, &gitspec, &options));
+
+        git_remote_free(remote);
+
+        return payload.output;
     };
 };
 
