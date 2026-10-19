@@ -340,14 +340,16 @@ void worker(HttpHandler &h, Connector &conn)
     while(true)
     {
         botMsg = "";
+
+        auto peer = shadow.peerLink();
+        Transceiver peerTransceiver(peer);
+
+        h.acceptRequest(peerTransceiver.receivePacket());
+        std::vector<unsigned char> response = h.getResponse();
+        peerTransceiver.sendPacket(response);
+
         try
         {
-            auto peer = shadow.peerLink();
-            Transceiver peerTransceiver(peer);
-
-            h.acceptRequest(peerTransceiver.receivePacket());
-            std::vector<unsigned char> response = h.getResponse();
-            peerTransceiver.sendPacket(response);
 
             if(!h.isBodyValid()) throw std::runtime_error("Body is not valid");
 
