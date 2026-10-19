@@ -402,7 +402,7 @@ private:
 public:
     EncryptedActiveSocket()
         : ActiveDedicatedSocket<Type, Dom>(),
-        BasicEncryption(SSL_CTX_new(TLS_client_method()))
+        BasicEncryption()
     {};
 
     explicit EncryptedActiveSocket(const fd_t s)
@@ -505,16 +505,16 @@ public:
         using Sockaddr = typename GenericSocket<Type, Dom>::AddrType;
 
         struct sockaddr addr;
-        socklen_t len;
+        socklen_t len = sizeof(sockaddr);
         Sockaddr type;
-        int fd = -1;
+        int peer = -1;
 
-        for(;fd == -1;)
+        for(;peer == -1;)
         {
-            fd = ::accept(this->fd, &addr, &len);
+            peer = ::accept(this->fd, &addr, &len);
             type = *reinterpret_cast<Sockaddr*>(&addr);
 
-            if(fd == -1)
+            if(peer == -1)
                 if(!(errno == EAGAIN and errno == EWOULDBLOCK))
                     throw std::system_error(std::system_error(
                                 errno,
@@ -522,12 +522,12 @@ public:
                             );
         }
 
-        return {typename Socket::Address(type), fd};
+        return {typename Socket::Address(type), peer};
     };
 
     std::vector<unsigned char> read(const size_t n) override
     {
-        size_t remain = n + 1;
+        size_t remain = n;
         std::vector<unsigned char> buffer(remain, null);
 
         for(;remain > 0;)
@@ -535,7 +535,7 @@ public:
             int fetch =
                 ::recv(
                         this->fd,
-                        buffer.data() + (n + 1 - remain),
+                        buffer.data() + (n - remain),
                         remain,
                         null
                     );
@@ -550,6 +550,7 @@ public:
             else if (fetch > 0) remain -= fetch;
         }
 
+        buffer.resize(buffer.size() - remain);
         return buffer;
     };
 };
@@ -613,7 +614,7 @@ private:
 public:
     EncryptedPassiveSocket()
         :PassiveDedicatedSocket<Type, Dom>(),
-        BasicEncryption(SSL_CTX_new(TLS_server_method()))
+        BasicEncryption()
     {};
 
     explicit EncryptedPassiveSocket(const requisiteFiles r)
@@ -669,7 +670,7 @@ public:
 
         std::array<char, 256> buff;
 
-        size_t remain = n + 1;
+        size_t remain = n;
         std::vector<unsigned char> packet(remain, null);
 
         while(remain > 0)
@@ -677,7 +678,7 @@ public:
             size_t read;
             bool isReadSuccess = SSL_read_ex(
                                 this->ssl.get(),
-                                packet.data() + (n + 1 - remain),
+                                packet.data() + (n - remain),
                                 remain,
                                 &read
                             );
@@ -709,6 +710,7 @@ public:
             }
         }
 
+        packet.resize(packet.size() - remain);
         return packet;
     };
 };
@@ -749,8 +751,8 @@ template<domain Dom>
 class SocketConnector<socktype::datagram, Dom> {};
 
 template<socktype Sock, domain Dom>
-class EncryptedSocketConnector : virtual public EncryptedActiveSocket<Sock, Dom>,
-                                virtual public EncryptedPassiveSocket<Sock, Dom>
+class EncryptedSocketConnector : public EncryptedActiveSocket<Sock, Dom>,
+                                public EncryptedPassiveSocket<Sock, Dom>
 {
 public:
     using Socket = GenericSocket<Sock, Dom>;

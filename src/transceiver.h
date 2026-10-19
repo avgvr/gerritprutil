@@ -18,15 +18,13 @@ public:
     Transceiver() = delete;
     explicit Transceiver(Connector &s) : scon(s) {};
 
-    void switchConnection(Connector &s) {scon = s;};
-
     Connector peerLink() {return scon.peerAccept();};
 
     std::vector<unsigned char> receivePacket()
     {
         std::vector<unsigned char> buff = scon.read(MaxPacketSize);
 
-        if(buff.back() != null)
+        if(buff.back() != null and buff.size() == MaxPacketSize)
             throw std::runtime_error(
                 "Maximum package size is reached - "
                 + std::to_string(MaxPacketSize)
