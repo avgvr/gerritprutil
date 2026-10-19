@@ -67,5 +67,11 @@ target_compile_definitions(gerritprutil
         VERSION=\"${gerritutils_VERSION}\"
 )
 
+target_include_directories(gerritprutil
+    PRIVATE
+        $<TARGET_PROPERTY:libgit2package,INCLUDE_DIRECTORIES>
+        $<TARGET_PROPERTY:jwt-cpp,INTERFACE_INCLUDE_DIRECTORIES>
+)
+
 add_subdirectory(src)
 add_subdirectory(test)

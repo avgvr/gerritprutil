@@ -68,20 +68,21 @@ token ArgumentLexer::tokenize()
                 {
                     tkn = TokenType::T_STRING;
                     char bracket = '\0';
-                    if(ch == '\'' and ch == '\"') bracket = ch;
+                    if(ch == '\'' or ch == '\"') bracket = ch;
 
                     ch = letterForwards(lexeme);
-                    while(ch != ' ' and ch != bracket and ch)
+                    while((ch != ' ' and ch and !bracket) or (bracket and ch != bracket))
                     {
                         if((ch == '\'' or ch == '\"') and ch != bracket)
                         {
                             tkn = TokenType::T_UNKNOWN;
                             break;
                         }
+                        else if(ch == '\0') break;
                         ch = letterForwards(lexeme);
                     }
 
-                    if(ch == bracket and ch)
+                    if(ch == bracket)
                         ch = letterForwards(lexeme);
                     else if(bracket and ch != bracket)
                         tkn = TokenType::T_UNKNOWN;
