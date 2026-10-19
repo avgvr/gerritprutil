@@ -36,11 +36,12 @@ private:
     bool isFilled;
 
     http::Header header;
-    nlohmann::json sender;
     size_t prid;
     std::string repositoryUrl;
     int commits;
     std::string headHash, baseHash, repositoryName;
+    std::string usrlogin;
+    size_t usrid;
 public:
     std::string head() {return headHash;}
     std::string base() {return baseHash;}
@@ -48,7 +49,8 @@ public:
         {return {repositoryUrl, repositoryName};}
     size_t commitsInPr() {return commits;}
     size_t pullRequestId() {return prid;};
-    nlohmann::json pullRequestSender() {return sender;}
+    std::string getUserLogin() {return usrlogin;}
+    size_t getUserId() {return usrid;};
 
     bool isBodyValid() {return this->isFilled;}
     void acceptRequest(const std::vector<unsigned char> &data)
@@ -56,7 +58,6 @@ public:
         this->isFilled = false;
 
         std::string packet(data.begin(), data.end());
-        packet.resize(std::strlen(packet.c_str()));
 
         std::string body;
 
@@ -77,7 +78,8 @@ public:
             and jsonpayload["action"] == "opened"
         )
         {
-            this->sender = jsonpayload["sender"];
+            this->usrlogin = jsonpayload["sender"]["login"];
+            this->usrid = jsonpayload["sender"]["id"];
             this->prid = jsonpayload["pull_request"]["id"];
             this->repositoryUrl = jsonpayload["repository"]["html_url"];
             this->repositoryName = jsonpayload["repository"]["name"];
