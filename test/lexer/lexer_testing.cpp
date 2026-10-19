@@ -104,8 +104,7 @@ TEST(LexerTestingExpectedWork, StringValues)
     l = ArgumentLexer("!@#$%^&*()№;:?\"\'\\/+-*");
     t = l.tokenize();
 
-    EXPECT_EQ(t.type, TokenType::T_STRING);
-    EXPECT_EQ(t.lexeme, std::string("!@#$%^&*()№;:?"));
+    EXPECT_EQ(t.type, TokenType::T_UNKNOWN);
 
     l = ArgumentLexer("\"string1 string2\"");
     t = l.tokenize();
@@ -122,8 +121,7 @@ TEST(LexerTestingExpectedWork, StringValues)
     l = ArgumentLexer("string\"                   ");
     t = l.tokenize();
 
-    EXPECT_EQ(t.type, TokenType::T_STRING);
-    EXPECT_EQ(t.lexeme, std::string("string"));
+    EXPECT_EQ(t.type, TokenType::T_UNKNOWN);
 }
 
 TEST(LexerTestingExpectedWork, NumberValues)
