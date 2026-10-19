@@ -67,5 +67,11 @@ target_compile_definitions(gerritprutil
         VERSION=\"${gerritutils_VERSION}\"
 )
 
+target_include_directories(gerritprutil
+    PRIVATE
+        ${LIBGIT2_INCLUDES}
+        ${JWT_INCLUDE_PATH}
+)
+
 add_subdirectory(src)
 add_subdirectory(test)
