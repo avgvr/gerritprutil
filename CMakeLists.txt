@@ -95,6 +95,11 @@ set(CPACK_PACKAGE_FILE_README
     ${CMAKE_CURRENT_LIST_DIR}/README.md
 )
 
+set(CPACK_SOURCE_IGNORE_FILES
+    /\\.git/
+    /*build*/
+)
+
 add_subdirectory(src)
 add_subdirectory(test)
 
