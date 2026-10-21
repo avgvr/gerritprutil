@@ -8,33 +8,63 @@
 
 #include <sys/time.h>
 
+/**
+* Commands description string
+ */
+const static std::string helpDesc = "Display help information";
+const static std::string versionDesc = "Return version string";
+const static std::string keyfileDesc = "Path to a SSL private key file. Default value is key,pem";
+const static std::string chainfileDesc = "Path to a SSL certificate chain file. Default value is cert.pem";
+const static std::string gerritaddressDesc = "Address to a Gerrit in format {hostname/IP address}:{port}. Default value is localhost:443";
+const static std::string gerritusernameDesc = "Gerrit username to a user with administrator rights";
+const static std::string gerritpasswordDesc = "Gerrit user token/http password to an accordingly user specified with gerritusername option";
+const static std::string branchDesc = "Base branch name to merge upload commits. Default value is main";
+const static std::string githubclientidDesc = "GitHub application client id";
+const static std::string githubkeypathDesc = "GitHub application private key file path";
+
 using EncryptedPassiveSocket =
     sock::EncryptedPassiveSocket<
         sock::socktype::stream,
         sock::domain::inet
     >;
 
-
 static std::string CHAINFILE = EncryptedPassiveSocket::DefaultChainFile;
 static std::string KEYFILE = EncryptedPassiveSocket::DefaultPrivateFile;
 
-void help_cb(argument &o){std::cout << "help func" << std::endl; exit(0);};
+void help_cb(argument &o)
+{
+    for(auto &optTrait : ArgumentParser::ArgsTrait)
+    {
+        const std::string argField =
+            optTrait.arg.first + ", " + optTrait.arg.second;
+
+        std::cout
+            << std::left
+            << std::setw(40)
+                << argField
+            << std::left
+            << std::setw(60)
+                << optTrait.description
+            << std::endl;
+    }
+    exit(0);
+};
 void version_cb(argument &o){std::cout << VERSION << std::endl; exit(0);};
 void keyfile_cb(argument &o){CHAINFILE = o.value;};
 void chainfile_cb(argument &o){KEYFILE = o.value;};
 
 
 const ArgumentsTrait ArgumentParser::ArgsTrait = {
-    {{"--help", "-h"}, TokenType::T_VOID , help_cb},
-    {{"--version", "-v"}, TokenType::T_VOID, version_cb},
-    {{"--key-file", "-k"}, TokenType::T_STRING, keyfile_cb},
-    {{"--chain-file", "-c"}, TokenType::T_STRING, chainfile_cb},
-    {{"--gerritaddress", "-g"}, TokenType::T_STRING, gerritaddress_cb},
-    {{"--gerritusername", "-u"}, TokenType::T_STRING, gerritusername_cb},
-    {{"--gerritpassword", "-a"}, TokenType::T_STRING, gerritpassword_cb},
-    {{"--branch", "-b"}, TokenType::T_STRING, pushbranch_pr},
-    {{"--github-app-tokenid", "-t"}, TokenType::T_STRING, githubapptokenid_cb},
-    {{"--github-key-path", "-p"}, TokenType::T_STRING, githubkeypath_cb},
+    {{"--help", "-h"}, TokenType::T_VOID , help_cb, helpDesc},
+    {{"--version", "-v"}, TokenType::T_VOID, version_cb, versionDesc},
+    {{"--key-file", "-k"}, TokenType::T_STRING, keyfile_cb, keyfileDesc},
+    {{"--chain-file", "-c"}, TokenType::T_STRING, chainfile_cb, chainfileDesc},
+    {{"--gerritaddress", "-g"}, TokenType::T_STRING, gerritaddress_cb, gerritaddressDesc},
+    {{"--gerritusername", "-u"}, TokenType::T_STRING, gerritusername_cb, gerritusernameDesc},
+    {{"--gerritpassword", "-a"}, TokenType::T_STRING, gerritpassword_cb, gerritpasswordDesc},
+    {{"--branch", "-b"}, TokenType::T_STRING, pushbranch_pr, branchDesc},
+    {{"--github-app-clientid", "-t"}, TokenType::T_STRING, githubapptokenid_cb, githubclientidDesc},
+    {{"--github-key-path", "-p"}, TokenType::T_STRING, githubkeypath_cb, githubkeypathDesc},
 };
 
 using Socket = sock::EncryptedSocketConnector<sock::socktype::stream, sock::domain::inet>;

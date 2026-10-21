@@ -12,8 +12,8 @@
 
 #include <jwt-cpp/jwt.h>
 
-static std::string GERRITHOSTNAME = "";
-static in_port_t GERRITPORT = 0;
+static std::string GERRITHOSTNAME = "localhost";
+static in_port_t GERRITPORT = 443;
 static std::string GERRITUSER = "";
 static std::string GERRITPASSWORD = "";
 static std::string PUSHBRANCH = "main";

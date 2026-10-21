@@ -73,5 +73,34 @@ target_include_directories(gerritprutil
         $<TARGET_PROPERTY:jwt-cpp,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
+include(GNUInstallDirs)
+install(TARGETS gerritprutil)
+
+set(CPACK_PACKAGE_NAME gerritprutil)
+set(CPACK_PACKAGE_VENDOR ObjectiveOS)
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Util to sync GitHub pull requests with a Gerrit change chain")
+set(CPACK_PACKAGE_CONTACT gvrlv.va@gmail.com)
+set(CPACK_VERBATIM_VARIABLES YES)
+set(CPACK_PACKAGE_CHECKSUM SHA256)
+set(CPACK_PACKAGE_INSTALL_DIR ${CPACK_PACKAGE_NAME})
+set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+
+set(CPACK_PACKAGE_FILE_LICENSE
+    ${CMAKE_CURRENT_LIST_DIR}/LICENSE
+)
+
+set(CPACK_PACKAGE_FILE_README
+    ${CMAKE_CURRENT_LIST_DIR}/README.md
+)
+
+set(CPACK_SOURCE_IGNORE_FILES
+    /\\.git/
+    /*build*/
+)
+
 add_subdirectory(src)
 add_subdirectory(test)
+
+include(CPack)
