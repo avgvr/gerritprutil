@@ -23,14 +23,16 @@ struct ArgumentTrait
     Argument arg;
     TokenType valueType;
     std::function<void(argument&val)> handle;
+    std::string description;
 };
 
 using ArgumentsTrait = std::vector<ArgumentTrait>;
 
 class ArgumentParser
 {
-private:
+public:
     const static ArgumentsTrait ArgsTrait;
+private:
     ArgumentLexer lexer;
     token currentToken;
 public:
