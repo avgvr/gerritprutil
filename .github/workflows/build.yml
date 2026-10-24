@@ -116,7 +116,7 @@ jobs:
           TAG: $${{ github.ref_name }}
         working-directory: ${{ needs.build-job.outputs.build_dir }}/packs
         run: |
-          gh release create "$TAG" \
+          gh release create "${TAG}" \
             --repo="${GITHUB_REPOSITORY}" \
             --title="${GITHUB_REPOSITORY#*/} ${TAG#v}" \
             --generate-notes \
