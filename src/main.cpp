@@ -50,8 +50,8 @@ void help_cb(argument &o)
     exit(0);
 };
 void version_cb(argument &o){std::cout << VERSION << std::endl; exit(0);};
-void keyfile_cb(argument &o){CHAINFILE = o.value;};
-void chainfile_cb(argument &o){KEYFILE = o.value;};
+void keyfile_cb(argument &o){KEYFILE = o.value;};
+void chainfile_cb(argument &o){CHAINFILE = o.value;};
 
 
 const ArgumentsTrait ArgumentParser::ArgsTrait = {
