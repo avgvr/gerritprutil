@@ -113,7 +113,7 @@ jobs:
       - name: Make release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: $${{ github.ref_name }}
+          TAG: ${{ github.ref_name }}
         working-directory: ${{ needs.build-job.outputs.build_dir }}/packs
         run: |
           gh release create "${TAG}" \
