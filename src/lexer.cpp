@@ -44,7 +44,7 @@ token ArgumentLexer::tokenize()
                 }
                 if(tkn == TokenType::T_LONG_OPTION)
                 {
-                    while(std::islower(ch)) ch = this->letterForwards(lexeme);
+                    while(std::islower(ch) or ch == '-') ch = this->letterForwards(lexeme);
                 }
                 else
                 {
