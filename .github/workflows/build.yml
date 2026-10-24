@@ -117,5 +117,5 @@ jobs:
           gh release create "$TAG" \
             --repo="${GITHUB_REPOSITORY}" \
             --title="${GITHUB_REPOSITORY#*/} ${TAG#v}" \
-            --generate-notes
+            --generate-notes \
             ./*
