@@ -115,7 +115,7 @@ std::string fetchGithubUserName(const std::string &username)
 
     unsigned httpCode = std::stol(githubUserCredentials.getHttpHeader().getValue("code"));
     if(httpCode != 200)
-        throw std::runtime_error("HTTP code іs not OK - " + std::to_string(httpCode));
+        throw std::runtime_error("HTTP code is not OK - " + std::to_string(httpCode));
 
     nlohmann::json credentials = nlohmann::json::parse(
         std::string(
@@ -127,7 +127,7 @@ std::string fetchGithubUserName(const std::string &username)
     return {credentials["name"]};
 };
 
-void fetchSshPublicKey(const std::string &username, const std::string &authorname, const unsigned githubUserId, const std::string &pubkeyFilepath)
+std::string initializeGerritUser(const std::string &username, const std::string &authorname, const unsigned githubUserId, const std::string &pubkeyFilepath)
 {
     EncryptedConnector gerritSocket;
     EncryptedConnector::Address gerritAddr;
@@ -208,7 +208,14 @@ void fetchSshPublicKey(const std::string &username, const std::string &authornam
 
     responseCode = std::stol(httpPacket.getHttpHeader().getValue("code"));
     if(responseCode != 200)
-        throw std::runtime_error("SSH key is not set for the " + username + " user");
+    {
+        auto rawContent = httpPacket.getHttpContent().first;
+        throw std::runtime_error(
+                                    "Failed to fetch SSH key: "
+                                    + std::string(rawContent.begin(), rawContent.end())
+                                    + " with responsse code: "
+                                    + std::to_string(responseCode));
+    }
 
     constexpr static unsigned short PassthroughJsonPrefix = 4;
     auto userSshKey = httpPacket.getHttpContent().first;
@@ -229,6 +236,70 @@ void fetchSshPublicKey(const std::string &username, const std::string &authornam
     }
     else
         throw std::runtime_error("Unable open file ");
+
+    httpPacket.erase();
+    httpHeader.setHeader("method", "PUT");
+    httpHeader.setHeader("path", "/a/accounts/" + username + "/password.http");
+    httpHeader.setHeader("version", "HTTP/1.1");
+    httpHeader.setHeader("Host", GERRITHOSTNAME);
+    httpHeader.addBasicAuthentication(authString);
+
+    nlohmann::json tokenMetainfo = nlohmann::json::object();
+    tokenMetainfo["generate"] = true;
+
+    auto tokenMetainfoString = tokenMetainfo.dump();
+    httpHeader.setHeader("Content-Length", std::to_string(tokenMetainfoString.length()));
+
+    httpPacket.setHttpContent(
+        {tokenMetainfoString.begin(), tokenMetainfoString.end()},
+        "application/json; charset=UTF-8"
+    );
+
+    rawbytes = httpPacket.dump();
+    transceiver.sendPacket(rawbytes);
+    rawbytes = transceiver.receivePacket();
+    httpPacket << rawbytes;
+
+    responseCode = std::stol(httpPacket.getHttpHeader().getValue("code"));
+    auto responseContent = httpPacket.getHttpContent().first;
+    if(responseCode >= 400)
+    {
+        auto rawContent = httpPacket.getHttpContent().first;
+        throw std::runtime_error(
+                                    "Failed to fetch SSH key: "
+                                    + std::string(rawContent.begin(), rawContent.end())
+                                    + " with responsse code: "
+                                    + std::to_string(responseCode));
+    }
+
+    return std::string(responseContent.begin() + 4, responseContent.end());
+};
+
+void gerritDeleteToken(const std::string &gerritUser)
+{
+    EncryptedConnector gerritSocket;
+    EncryptedConnector::Address gerritAddr;
+    gerritAddr.setPlacement(GERRITHOSTNAME, GERRITPORT);
+    gerritSocket.setSocketOption(sock::Protocol::api, sock::SocketOption::reuseaddr, trueint);
+    gerritSocket.setSocketOption(sock::Protocol::api, sock::SocketOption::rcvtimeo, timeout);
+    gerritSocket.connect(gerritAddr);
+
+    Transceiver transceiver(gerritSocket);
+
+    const std::string authString = GERRITUSER + ':' + GERRITPASSWORD;
+
+    http::Http httpPacket;
+    auto &httpHeader = httpPacket.getHttpHeader();
+    httpHeader.setHeader("method", "DELETE");
+    httpHeader.setHeader("path", "/a/accounts/" + gerritUser + "/password.http");
+    httpHeader.setHeader("version", "HTTP/1.1");
+    httpHeader.setHeader("Host", GERRITHOSTNAME);
+    httpHeader.addBasicAuthentication(authString);
+
+    auto rawbytes = httpPacket.dump();
+    transceiver.sendPacket(rawbytes);
+    rawbytes = transceiver.receivePacket();
+    httpPacket << rawbytes;
 };
 
 void fetchGitMsgHook(const std::string &repopath)
@@ -297,7 +368,7 @@ void githubLeaveMessage(
                     + repository
                     + "/issues/"
                     + std::to_string(prid)
-                    + "comments"
+                    + "/comments"
                 );
     hdr.setHeader("version", "HTTP/1.1");
     hdr.setHeader("Host", "api.github.com");
@@ -331,6 +402,48 @@ void githubLeaveMessage(
         throw std::runtime_error("HTTP code іs not OK - " + std::to_string(httpCode));
 };
 
+std::string githubGenerateInstallationToken(const std::string &jwt, const size_t installationId, const std::string &userAgent)
+{
+    EncryptedConnector githubApiSocket;
+    EncryptedConnector::Address githubApiAddr;
+    githubApiAddr.setPlacement("api.github.com", 443);
+    githubApiSocket.setSocketOption(sock::Protocol::api, sock::SocketOption::reuseaddr, trueint);
+    githubApiSocket.setSocketOption(sock::Protocol::api, sock::SocketOption::rcvtimeo, timeout);
+    githubApiSocket.connect(githubApiAddr);
+
+    Transceiver githubApi(githubApiSocket);
+
+    http::Http http;
+    http::Header &hdr = http.getHttpHeader();
+    hdr.setHeader("method", "POST");
+    hdr.setHeader(
+                    "path",
+                    "/app/installations"
+                    + std::to_string(installationId)
+                    + "/access_tokens"
+                );
+    hdr.setHeader("version", "HTTP/1.1");
+    hdr.setHeader("Host", "api.github.com");
+    hdr.setHeader("X-GitHub-Api-Version", "2026-03-10");
+    hdr.setHeader("Accept", "application/vnd.github+json");
+    hdr.setHeader("User-Agent", userAgent);
+    hdr.addBearerAuthentication(jwt);
+
+    std::vector<unsigned char> httpraw = http.dump();
+    githubApi.sendPacket(httpraw);
+    auto data = githubApi.receivePacket();
+    http << data;
+    auto response = http.getHttpContent().first;
+
+    unsigned httpCode = std::stol(http.getHttpHeader().getValue("code"));
+    if(httpCode != 200)
+        throw std::runtime_error("HTTP code іs not OK - " + std::to_string(httpCode));
+
+    nlohmann::json tknJson = nlohmann::json::parse(std::string(response.begin(), response.end()));
+
+    return tknJson["token"];
+}
+
 template<class Connector>
 void worker(HttpHandler &h, Connector &conn)
 {
@@ -351,7 +464,7 @@ void worker(HttpHandler &h, Connector &conn)
         try
         {
 
-            if(!h.isBodyValid()) throw std::runtime_error("Body is not valid");
+            if(!h.isBodyValid()) throw std::runtime_error("FETCHING PULL REQUEST::Webhook http packet body is not valid");
 
             const std::filesystem::path repopath = "/tmp/" + h.repository().second;
             const std::filesystem::path pubkeypath = "/tmp/pubkey";
@@ -374,7 +487,7 @@ void worker(HttpHandler &h, Connector &conn)
 
             // Create external gerrit user imported from the GitHub if it is not exists
             // Fetch SSH key to push git commits
-            fetchSshPublicKey(h.getUserLogin(), githubUserName, h.getUserId(), pubkeypath);
+            std::string gerritUserAuthToken = initializeGerritUser(h.getUserLogin(), githubUserName, h.getUserId(), pubkeypath);
 
             // Push commits to a Gerrit
             auto prcmts = repository.listCommits(h.base(), h.head());
@@ -383,10 +496,10 @@ void worker(HttpHandler &h, Connector &conn)
             for(auto &cmt : prcmts)
             {
                 std::string progress = repository.pushRemote(
-                    GERRITUSER + '@' + GERRITHOSTNAME,
-                    {},
+                    "https://" + GERRITUSER + "@://" + GERRITHOSTNAME + '/' + h.repository().second,
                     {cmt->hash() + ":refs/for/" + PUSHBRANCH},
-                    h.getUserLogin()
+                    h.getUserLogin(),
+                    gerritUserAuthToken
                 );
                 auto changeUrlPosBegin = progress.find_first_of("https://" + GERRITHOSTNAME + "/c/" + h.repository().second + "/+/");
                 if(changeUrlPosBegin != std::string::npos)
@@ -403,6 +516,8 @@ void worker(HttpHandler &h, Connector &conn)
                 botMsg += progress;
             }
             botMsg += "\n";
+
+            gerritDeleteToken(h.getUserLogin());
 
         }
         catch(std::runtime_error &runtimeError)
@@ -423,6 +538,8 @@ void worker(HttpHandler &h, Connector &conn)
 
         try
         {
+            if(!h.isBodyValid()) throw std::runtime_error("PULL REQUEST MESSAGE SENDING::Webhook http packet body is not valid");
+
             if(GITHUBCLIENTID.empty() or GITHUBKEYPATH.empty())
                 throw std::runtime_error("GitHub App credentials is not set");
 
@@ -446,6 +563,7 @@ void worker(HttpHandler &h, Connector &conn)
                 .set_issuer(GITHUBCLIENTID)
                 .sign(jwt::algorithm::rs256("", githubPrivateKey.str(), "", ""));
 
+            githubToken = githubGenerateInstallationToken(githubToken, h.getInstallationId(), h.getOwnerLogin());
             githubLeaveMessage(githubToken, h.pullRequestId(), h.getUserLogin(), h.repository().second, botMsg);
         }
         catch(std::runtime_error &runtimeError)

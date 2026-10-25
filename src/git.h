@@ -16,7 +16,7 @@ namespace git
 
 struct pushPayload
 {
-    const char *username, *pubkeyfile, *privkeyfile;
+    const char *username, *token;
     std::string output;
 };
 
@@ -30,11 +30,11 @@ int sshCredentials(
 {
     pushPayload creds = *reinterpret_cast<pushPayload*>(payload);
 
-    if(allowed_types & GIT_CREDENTIAL_SSH_KEY)
+    if(allowed_types & GIT_CREDENTIAL_USERPASS_PLAINTEXT)
     {
         const char *user = username_from_url ? username_from_url : creds.username;
 
-        return git_credential_ssh_key_new(out, user, creds.pubkeyfile, creds.privkeyfile, nullptr);
+        return git_credential_userpass_plaintext_new(out, user, creds.token);
     }
 
     return GIT_PASSTHROUGH;
@@ -176,7 +176,7 @@ public:
         return commits;
     };
 
-std::string pushRemote(const std::string &url, const std::vector<std::string> &refspecs, const std::filesystem::path &pubkey, const std::string &user)
+std::string pushRemote(const std::string &url, const std::vector<std::string> &refspecs, const std::string &user, const std::string &authtoken)
     {
         isValid();
 
@@ -190,7 +190,7 @@ std::string pushRemote(const std::string &url, const std::vector<std::string> &r
 
         git_push_options options = GIT_PUSH_OPTIONS_INIT;
 
-        pushPayload payload = {user.c_str(), pubkey.c_str(), nullptr, ""};
+        pushPayload payload = {user.c_str(), authtoken.c_str(), ""};
 
         options.callbacks.payload = &payload;
         options.callbacks.credentials = &sshCredentials;

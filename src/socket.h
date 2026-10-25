@@ -644,7 +644,7 @@ public:
 
         if(this->ctx == nullptr)
         {
-            this->ctx.reset(SSL_CTX_new(TLS_client_method()), &SSL_CTX_free);
+            this->ctx.reset(SSL_CTX_new(TLS_server_method()), &SSL_CTX_free);
             if(this->ctx == nullptr) 
             {
                 ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
@@ -773,11 +773,12 @@ public:
                                 const RequisiteFiles &reqs
                             )
         : Socket(d),
-        BasicEncryption()
+        BasicEncryption(),
+        EncryptedPassiveSocket<Sock, Dom>(reqs)
     {};
     EncryptedSocketConnector(const fd_t d, EncryptedSocketConnector &c)
         : Socket(d),
-        BasicEncryption(),
+        BasicEncryption(c.ctx.get()),
         EncryptedPassiveSocket<Sock, Dom>(d, dynamic_cast<EncryptedPassiveSocket<Sock, Dom>&>(c))
     {};
 
@@ -797,18 +798,25 @@ public:
     EncryptedSocketConnector peerAccept()
     {
         std::array<char, 256> buff;
-        EncryptedSocketConnector res = EncryptedSocketConnector(accept().sock, *this);
+        const fd_t acceptSocket = accept().sock;
+        EncryptedSocketConnector res = EncryptedSocketConnector(acceptSocket, *this);
 
         if(!res.createNewSslSession())
         {
             ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
-            throw std::runtime_error("Failed to create a SSL session" + std::string(buff.data()));
+            throw std::runtime_error("Failed to create a SSL session. " + std::string(buff.data()));
         }
 
-        if(!this->setSockToSslSession(this->fd))
+        if(!res.setSockToSslSession(acceptSocket))
         {
             ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
-            throw std::runtime_error("Failed to create a SSL session" + std::string(buff.data()));
+            throw std::runtime_error("Failed to create a SSL session. " + std::string(buff.data()));
+        }
+
+        if(SSL_accept(res.ssl.get()) <= 0)
+        {
+            ERR_error_string_n(ERR_get_error(), buff.data(), buff.size());
+            throw std::runtime_error("Failed to perform a SSL handshake. " + std::string(buff.data()));
         }
 
         return res;

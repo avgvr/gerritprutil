@@ -36,7 +36,9 @@ private:
     bool isFilled;
 
     http::Header header;
-    size_t prid;
+    size_t prid, prNumber;
+    size_t installationId;
+    std::string ownerLogin;
     std::string repositoryUrl;
     int commits;
     std::string headHash, baseHash, repositoryName;
@@ -51,6 +53,9 @@ public:
     size_t pullRequestId() {return prid;};
     std::string getUserLogin() {return usrlogin;}
     size_t getUserId() {return usrid;};
+    size_t getPrNumber() {return prNumber;}
+    size_t getInstallationId() {return installationId;}
+    std::string getOwnerLogin() {return ownerLogin;}
 
     bool isBodyValid() {return this->isFilled;}
     void acceptRequest(const std::vector<unsigned char> &data)
@@ -69,18 +74,21 @@ public:
             body = packet.substr(sizeof(PacketDelim) - 1 + delimpos);
         }
 
-        std::string contentType = header.getValue("content-type");
-        if(contentType != "application/json") return;
+        std::string contentType = header.getValue("Content-Type");
+        if(contentType.find("application/json") == std::string::npos) return;
 
         nlohmann::json jsonpayload = nlohmann::json::parse(body);
 
-        if(header.getValue("x-github-event") == "pull_request"
+        if(header.getValue("X-GitHub-Event") == "pull_request"
             and jsonpayload["action"] == "opened"
         )
         {
             this->usrlogin = jsonpayload["sender"]["login"];
             this->usrid = jsonpayload["sender"]["id"];
             this->prid = jsonpayload["pull_request"]["id"];
+            this->prNumber = jsonpayload["pull_request"]["number"];
+            this->installationId = jsonpayload["installation"]["id"];
+            this->ownerLogin = jsonpayload["repository"]["owner"]["login"];
             this->repositoryUrl = jsonpayload["repository"]["html_url"];
             this->repositoryName = jsonpayload["repository"]["name"];
             this->commits = jsonpayload["pull_request"]["commits"];
